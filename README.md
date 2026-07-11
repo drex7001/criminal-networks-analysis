@@ -30,7 +30,7 @@ Open **http://127.0.0.1:8000**. The explorer (Cytoscape.js + FastAPI) gives you:
 
 - **Multiplex layer toggles** (Ideological / Financial / Prison co-location / Transnational) — edges coloured per layer.
 - **Confidence filter** — Extracted / Inferred / Ambiguous, rendered as solid / dashed / dotted links.
-- **Temporal slider** — drag left for an *as-of-date* snapshot (relationships active on that date), rightmost = full all-time network; **Play** animates the timeline.
+- **Temporal slider** — drag left for an _as-of-date_ snapshot (relationships active on that date), rightmost = full all-time network; **Play** animates the timeline.
 - **Detected cells** — Leiden communities, colour-coded, with isolated cells flagged; every node/edge detail card shows its **source citation and the supporting excerpt**.
 - **Analyst queries** — cross-layer brokers, ambiguous-review queue, hard-facts-only, ongoing-now — mirroring the Cypher analyst queries and the `/api/query/*` endpoints.
 
@@ -80,14 +80,14 @@ PDFs / text ─┬─> structural_pass.py   regex on structured lists (arrest an
 
 Every edge carries all of the following — the Pydantic layer enforces it:
 
-| Field | Rule |
-|---|---|
-| `confidence` | `EXTRACTED` (hard fact: judgments, official lists) / `INFERRED` (probable, from context) / `AMBIGUOUS` (suspected, unconfirmed) |
-| `weight` | **Derived** from the tag: 1.0 / 0.7 / 0.4. A hand-set value is overwritten. |
-| `layer` | `IDEOLOGICAL` \| `FINANCIAL` \| `PRISON_CO_LOCATION` \| `TRANSNATIONAL` — also the Neo4j relationship type |
-| `start_date` / `end_date` | ISO dates; `end_date = null` means ongoing. `end < start` is rejected. |
-| `source_file` / `source_excerpt` | Provenance: the document and the verbatim supporting sentence |
-| `extraction_method` | `STRUCTURAL` (regex) or `SEMANTIC` (LLM) |
+| Field                            | Rule                                                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `confidence`                     | `EXTRACTED` (hard fact: judgments, official lists) / `INFERRED` (probable, from context) / `AMBIGUOUS` (suspected, unconfirmed) |
+| `weight`                         | **Derived** from the tag: 1.0 / 0.7 / 0.4. A hand-set value is overwritten.                                                     |
+| `layer`                          | `IDEOLOGICAL` \| `FINANCIAL` \| `PRISON_CO_LOCATION` \| `TRANSNATIONAL` — also the Neo4j relationship type                      |
+| `start_date` / `end_date`        | ISO dates; `end_date = null` means ongoing. `end < start` is rejected.                                                          |
+| `source_file` / `source_excerpt` | Provenance: the document and the verbatim supporting sentence                                                                   |
+| `extraction_method`              | `STRUCTURAL` (regex) or `SEMANTIC` (LLM)                                                                                        |
 
 Honesty rule inherited from Graphify: **never invent an edge — if unsure, tag it
 AMBIGUOUS rather than omit it**, so weak links enter the analyst review queue
@@ -164,3 +164,7 @@ build_real_graph.py   real-graph orchestrator  ->  output/real_graph.json + outp
 demo.py               fictional end-to-end orchestrator (mechanism proof)
 output/               generated graph JSON + Cypher (real_graph.json powers the UI)
 ```
+
+## UI
+
+![alt text](image.png)
