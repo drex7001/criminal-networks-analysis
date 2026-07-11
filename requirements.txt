@@ -1,0 +1,26 @@
+# Core
+pydantic>=2.7
+python-dotenv>=1.0
+
+# Semantic pass - provider-agnostic entry point (init_chat_model)
+langchain>=0.3
+# Install the package matching the provider in EXTRACTION_MODEL (.env):
+langchain-google-genai>=2.0   # google_genai:* models (Gemini — default here)
+langchain-anthropic>=0.3      # anthropic:* models
+# langchain-openai>=0.3       # openai:* models
+# langchain-ollama>=0.2       # ollama:* models (local, no API key)
+
+# Web UI (interactive Cytoscape.js explorer served by FastAPI)
+fastapi>=0.110
+uvicorn>=0.29
+
+# Graph + community detection (Leiden)
+networkx>=3.3
+python-igraph>=0.11
+leidenalg>=0.10
+
+# Document handling
+pdfplumber>=0.11
+
+# Neo4j driver (only needed for --push; the .cypher export works without it)
+neo4j>=5.23
