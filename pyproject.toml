@@ -31,3 +31,4 @@ packages = ["aegis"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: requires the dedicated PostgreSQL test database"]

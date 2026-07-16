@@ -1,5 +1,29 @@
-"""Persistence adapter: SQLAlchemy models + engine (schema arrives in T4)."""
+"""Persistence adapter: SQLAlchemy models and engine."""
 
 from aegis.store.engine import Base, get_engine, get_sessionmaker
+from aegis.store.models import (
+    AuthzOutbox,
+    CaseFile,
+    CaseMember,
+    Claim,
+    ClaimRelation,
+    Entity,
+    ReviewQueue,
+    Source,
+    SourceRecord,
+)
 
-__all__ = ["Base", "get_engine", "get_sessionmaker"]
+__all__ = [
+    "AuthzOutbox",
+    "Base",
+    "CaseFile",
+    "CaseMember",
+    "Claim",
+    "ClaimRelation",
+    "Entity",
+    "ReviewQueue",
+    "Source",
+    "SourceRecord",
+    "get_engine",
+    "get_sessionmaker",
+]
