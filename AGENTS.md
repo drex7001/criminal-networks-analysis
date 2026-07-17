@@ -1,0 +1,54 @@
+# AGENTS.md — instructions for AI agents in this repository
+
+This is **Aegis** — a governed intelligence / criminal-network-analysis
+platform (Sri Lankan OSINT corpus). The vision is `GOAL.md`; the buildable
+path is `speckit/` (read `speckit/README.md` first). Work is phase-gated:
+check `speckit/roadmap.md` for the current phase and its charter in
+`speckit/phases/` before starting anything.
+
+## Git rules (binding — full doc: `docs/GIT_WORKFLOW.md`)
+
+- **Never commit or push directly to `master`.** It is branch-protected;
+  every change lands via a Pull Request with green CI, squash-merged.
+- Branch per task: `<type>/<slug>` — `feat/`, `fix/`, `docs/`, `test/`,
+  `chore/`; reference task IDs (e.g. `feat/t17-mention-extraction`).
+- Conventional commit messages; PR titles in the same format (they become the
+  squash-commit subject). Keep the `Co-Authored-By:` trailer on AI-assisted
+  commits.
+- Before pushing: `pytest -q -m "not integration"` and, if the ontology
+  changed, `aegis ontology validate` + a semver bump (spec 01 §4).
+- Never rewrite pushed history; undo on master is `git revert`.
+- Never commit secrets (`.env` stays untracked) or large binaries.
+
+## Governance rules (from `speckit/constitution.md` — non-negotiable)
+
+- The 13 Articles are checked on every schema/feature change. Highlights:
+  claims-not-facts (I), no inherent criminality (II), AI output goes to the
+  review queue, never directly to canonical tables (VII), every route has an
+  authorization dependency (VI), projections are rebuildable caches (XIII).
+- `ontology/aegis.yaml` is the single domain artifact (XI): never hand-write a
+  domain type the ontology doesn't declare. Changes follow the versioning
+  rules in `speckit/specs/01-ontology.md` (v2: `specs/08-ontology-v2.md`).
+- Load-bearing decisions live in `speckit/decisions.md` (ADRs, append-only).
+  If implementation diverges from a spec, append an ADR — don't silently
+  drift.
+
+## Commands
+
+```bash
+make up && make bootstrap        # compose stack: postgres+postgis, minio, keycloak, openfga
+aegis db upgrade                 # alembic migrations
+pytest -q -m "not integration"   # fast suite (integration needs the test DB)
+aegis ontology validate          # Article XI gate (also in CI)
+aegis projections rebuild        # regenerate all projections (Article XIII)
+aegis serve                      # FastAPI dev server
+```
+
+CI (`.github/workflows/ci.yml`) runs pytest + ontology validation
+automatically on every push/PR — do not merge on red.
+
+## Data ethics
+
+Open-source-only corpus about real people: never add national-ID numbers for
+real persons, never present association as guilt, follow
+`real_data/README.md`. Fictional test data lives in `sample_data/`.
