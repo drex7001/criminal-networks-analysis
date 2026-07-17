@@ -116,7 +116,8 @@ provenance. Charter: `phases/phase-02-mvp-identity-provenance.md` · tasks:
 
 **Goal.** `aegis.yaml` grows from vocabulary file into a full ontology-platform
 artifact — the Foundry-class layer the rest of the product is built on.
-Charter: `phases/phase-03-ontology-v2.md` · spec: `specs/08-ontology-v2.md`.
+Charter: `phases/phase-03-ontology-v2.md` · spec: `specs/08-ontology-v2.md` ·
+tasks: `tasks-phase-3.md` (T29–T40, pre-authored).
 
 **Deliverables (summary)** — DSL v2: **interfaces** + **shared property
 types**; **functions registry** (declared derivations; prison co-location

@@ -19,6 +19,7 @@ extended** (ADR-023).
 | 6 | [`phases/`](phases/) | One charter per remaining phase (P2–P9): objectives, deliverables, dependencies, exit criteria, risks, task sketch. |
 | 7 | [`tasks-phase-1.md`](tasks-phase-1.md) | Phase 1 task list (T1–T16, COMPLETE) + [`phase-1-exit-review.md`](phase-1-exit-review.md). |
 | 8 | [`tasks-phase-2.md`](tasks-phase-2.md) | Phase 2 task list (T17–T28) — the active phase, closing with the MVP gate. |
+| 9 | [`tasks-phase-3.md`](tasks-phase-3.md) | Phase 3 task list (T29–T40, ontology v2) — pre-authored; activates after the MVP gate. |
 
 ## Detailed specs
 
