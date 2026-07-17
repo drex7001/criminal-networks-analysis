@@ -430,3 +430,85 @@ offline-demo tool (kept until Phase 3).
 **Revisit when.** A deployment needs authenticated, clearance-scoped graph reads in the
 UI — then the UI adopts the bearer flow and `/api/graph` gains the `authorize()` gate
 plus row filters, and the `public_route` marker is removed.
+
+---
+
+## ADR-020: Python/FastAPI is the reference implementation — the Kotlin/Spring end-state is withdrawn
+
+**Context.** GOAL.md §36 originally recommended a Kotlin/Spring core with Python
+confined to analytics. Phase 1 delivered the entire governed platform (claim store,
+actions, authz, audit, projections, API) in Python 3.12 + FastAPI, built and operated
+by one hands-on developer. plan.md §2 already treated the JVM rewrite as trigger-gated
+("second backend team, or JVM-grade throughput need") — a trigger with no plausible
+path to firing in this deployment.
+
+**Decision.** Python 3.12 + FastAPI is the *reference implementation* of the Aegis
+core through production, not a stepping stone. GOAL.md §36 is amended accordingly
+(reference-implementation vs trigger-gated-upgrade table). Scale pressure is answered
+by the per-concern triggers (Neo4j, OpenSearch, Kubernetes, Kafka, …) in plan.md §2
+and roadmap Phase 9 — never by a wholesale rewrite.
+
+**Consequences.** All remaining phases (P2–P9) build on the existing codebase; the
+generated SDKs (ADR-021) target Python and TypeScript. Removing the rewrite option
+makes long-lived Python choices (SQLAlchemy models, actions layer) worth continued
+investment in quality rather than treated as disposable.
+
+**Revisit when.** A second backend team exists, or a measured throughput requirement
+exceeds what horizontal FastAPI workers + Postgres can serve.
+
+---
+
+## ADR-021: Foundry-informed ontology v2 — interfaces, functions, actions v2, generated SDKs
+
+**Context.** Study of Palantir Foundry's Ontology (semantic/kinetic layers, action
+types with parameters/submission criteria/side effects, functions, interfaces, shared
+property types, Object Storage v2, object sets/views, OSDK, proposals workflow)
+against the Aegis ontology DSL (spec 01) shows Aegis already matches Foundry on
+ontology-as-single-source (Article XI), audited actions, projections-as-caches
+(Article XIII), and review-queue writeback discipline — but lacks: interfaces/shared
+properties, a real functions layer (only a `computed: true` flag), action
+parameters/criteria/side-effects, object sets, object views, typed client SDKs, and an
+ontology change-management workflow.
+
+**Decision.** Adopt the Foundry layer architecture where it fits, in phases: DSL v2
+(interfaces, shared properties, functions, actions v2, proposals, Python+TS SDK
+codegen) in Phase 3 (spec 08); object views in Phase 4; object sets in Phase 6.
+**Retain the deliberate divergence:** Aegis property values and links are *claims*
+with source, grading, and time (Article I) — Foundry-style mutable property values
+are rejected; any "current value" is a derived, inspectable projection over claims.
+GOAL.md gains §7.8–7.10 (layer model, design principles, explicit Aegis↔Foundry
+concept map).
+
+**Consequences.** The P4 workspace is generated from the ontology + TS SDK rather
+than hand-built per type; function outputs are attributed algorithmic sources
+(suggestion-mode by default, Article VII); ontology changes acquire a proposal +
+history discipline enforced in CI.
+
+**Revisit when.** DSL v2 features accumulate without consumers (trim to spec 08's
+exclusion list), or single-repo proposals stop scaling to the contributor count.
+
+---
+
+## ADR-022: Roadmap v2 — milestones, P0–P9 renumbering, MVP gate at Phase 2
+
+**Context.** Phase 1 closed (see phase-1-exit-review.md). The v1 roadmap (P0–P7) had
+no home for the ontology-v2 work (ADR-021), buried controlled AI in a trigger-table
+row, and had no explicit "usable product" checkpoint. The user's direction: complete
+roadmap to production, with a demonstrable MVP by the end of Phase 2.
+
+**Decision.** Roadmap v2 groups phases into six architectural milestones and
+renumbers: P2 identity/provenance (enlarged with review-queue UI, basic search, and a
+demo runbook) closes with a **★ MVP gate** — the full ingest→suggest→review→accept→
+projection loop demonstrable from the UI by a non-builder; new P3 = ontology v2;
+old P3–P6 shift to P4–P7; controlled AI is promoted to a real Phase 8; P9 = production
+baseline + the trigger table. Every remaining phase gets a charter in
+`speckit/phases/`; T-level task files are written at each phase start (Phase 2's
+exists: tasks-phase-2.md, T17–T28).
+
+**Consequences.** Phase references in living documents (specs, plan, ontology
+comments, GOAL.md) are updated to v2 numbering. **ADR-001…019 are append-only history
+and keep their v1 phase references** — the mapping table at the top of roadmap.md is
+the translation. GOAL.md §40 now defers to speckit/roadmap.md.
+
+**Revisit when.** A phase's exit criteria prove wrong in practice — amend via a new
+ADR and a charter update, never by renumbering again.

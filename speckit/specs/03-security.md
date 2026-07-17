@@ -46,7 +46,7 @@ type case
     define can_approve: supervisor
     define auditor_grant: [user]        # explicit, logged auditor attachment
 
-type compartment                         # Phase 6; type exists from day one
+type compartment                         # Phase 7; type exists from day one
   relations
     define member: [user]
     define can_view: member
@@ -78,7 +78,7 @@ JWT → user ctx (id, roles, clearance)
         handling_rank(row) <= user.clearance
         case scoping (member cases ∪ case-less rows)
         retracted_at IS NULL            (unless auditor)
-        sealed exclusions               (Phase 6)
+        sealed exclusions               (Phase 7)
   → field filters: property sensitivity (ontology) > clearance ⇒ field omitted
   → audit(decision, purpose)
 ```
@@ -102,13 +102,13 @@ Schema in specs/02 §5. Behaviors:
   itself audited.
 - Export events record destination and a manifest hash of what left the system.
 
-## 6. Insider-threat & break-glass (Phase 6, designed now)
+## 6. Insider-threat & break-glass (Phase 7, designed now)
 
 - Standing queries over `audit_log`: bulk reads, off-case access patterns, repeated
   lookups of the same person without case linkage, export volume.
 - Break-glass: a special action granting time-boxed elevated access with mandatory
   reason + automatic supervisor/auditor notification + forced review record.
-  The schema supports it from Phase 1 (`audit_log.detail`), the flow ships in P6.
+  The schema supports it from Phase 1 (`audit_log.detail`), the flow ships in P7.
 
 ## 7. Secrets & data protection (Phase 1 practical baseline)
 

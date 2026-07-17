@@ -114,7 +114,7 @@ CREATE TABLE claim (
   handling_code  TEXT NOT NULL DEFAULT 'open',
   case_id        TEXT REFERENCES case_file,
   jurisdiction   TEXT,
-  location_text  TEXT,                  -- Phase 4 upgrades to location entity refs
+  location_text  TEXT,                  -- Phase 5 upgrades to location entity refs
   supersedes     TEXT REFERENCES claim,
   ontology_version TEXT NOT NULL,
   CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from),
@@ -161,7 +161,7 @@ CREATE TABLE review_queue (
 CREATE TABLE case_file (
   case_id     TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
-  status      TEXT NOT NULL DEFAULT 'open',   -- open | closed | sealed (Phase 6)
+  status      TEXT NOT NULL DEFAULT 'open',   -- open | closed | sealed (Phase 7)
   purpose     TEXT NOT NULL,                  -- purpose limitation anchor (GOAL.md §12.4)
   handling_code TEXT NOT NULL DEFAULT 'open',
   opened_by   TEXT NOT NULL,
@@ -196,7 +196,7 @@ CREATE TABLE evidence_item (
   storage_uri  TEXT,
   acquired_at  TIMESTAMPTZ,
   acquired_by  TEXT,
-  legal_basis  TEXT,                 -- free text Phase 1; authority objects Phase 6
+  legal_basis  TEXT,                 -- free text Phase 1; authority objects Phase 7
   handling_code TEXT NOT NULL DEFAULT 'restricted',
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );

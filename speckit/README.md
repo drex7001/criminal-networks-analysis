@@ -13,8 +13,10 @@ is the *buildable path* for a small team starting from the code that exists toda
 | 2 | [`spec.md`](spec.md) | What we are building, for whom, and what we are **not** building. |
 | 3 | [`plan.md`](plan.md) | Technical plan: architecture, stack choices, upgrade paths. |
 | 4 | [`decisions.md`](decisions.md) | ADR log — every load-bearing decision with rationale and revisit triggers. |
-| 5 | [`roadmap.md`](roadmap.md) | Phased roadmap with exit criteria, mapped to the current repo. |
-| 6 | [`tasks-phase-1.md`](tasks-phase-1.md) | Concrete, ordered task list for the next phase. |
+| 5 | [`roadmap.md`](roadmap.md) | Phased roadmap v2 (milestones I–VI, P0–P9, ★ MVP gate at P2) with exit criteria. |
+| 6 | [`phases/`](phases/) | One charter per remaining phase (P2–P9): objectives, deliverables, dependencies, exit criteria, risks, task sketch. |
+| 7 | [`tasks-phase-1.md`](tasks-phase-1.md) | Phase 1 task list (T1–T16, COMPLETE) + [`phase-1-exit-review.md`](phase-1-exit-review.md). |
+| 8 | [`tasks-phase-2.md`](tasks-phase-2.md) | Phase 2 task list (T17–T28) — the active phase, closing with the MVP gate. |
 
 ## Detailed specs
 
@@ -27,6 +29,7 @@ is the *buildable path* for a small team starting from the code that exists toda
 | [`specs/05-entity-resolution.md`](specs/05-entity-resolution.md) | Splink-based ER, versioned identity clusters, adjudication. |
 | [`specs/06-api.md`](specs/06-api.md) | API v1 surface, authorization annotations, as-of queries. |
 | [`specs/07-ui.md`](specs/07-ui.md) | UI evolution: projection explorer → investigation workspace. |
+| [`specs/08-ontology-v2.md`](specs/08-ontology-v2.md) | Ontology DSL v2 (Phase 3): interfaces, shared properties, functions, actions v2, change management, generated SDKs (ADR-021). |
 
 ## The ontology artifact
 
@@ -42,3 +45,6 @@ multi-agency federation). We adopt its **principles completely** and its
 **infrastructure incrementally**. Where GOAL.md and the scaled plan diverge
 (e.g. Neo4j-first vs Postgres-first), `decisions.md` records the choice, the reason,
 and the objective trigger for upgrading to the GOAL.md end-state component.
+Python/FastAPI is the reference implementation through production (ADR-020), and
+GOAL.md §7.8–7.10 records the Foundry-informed ontology architecture this kit
+implements phase by phase (ADR-021).

@@ -1,6 +1,10 @@
 # Spec 01 — Ontology DSL
 
-Status: draft for Phase 1 · Owner: analyst · Constitutional basis: Article XI
+Status: implemented in Phase 1 (v1 reference) · Owner: analyst · Constitutional basis: Article XI
+
+> **v2 note:** Phase 3 extends this DSL with interfaces, shared properties,
+> functions, actions v2, change management, and generated SDKs — see
+> `08-ontology-v2.md` (ADR-021). Everything below remains valid; v2 is additive.
 
 ## 1. Purpose
 
@@ -20,7 +24,7 @@ source_types: [...]        # closed list for source.source_type
 categories: {...}          # predicate categories (generalizes LayerType)
 object_types: {...}
 predicates: {...}
-event_types: {...}         # Phase 4
+event_types: {...}         # Phase 5
 actions: {...}
 ```
 
@@ -80,7 +84,7 @@ object_types:
       date_of_birth: {type: date, conflicts: preserve}   # two DOBs may coexist (Rule 5)
     display: {title: name, subtitle: aliases}
 ```
-- `type` ∈ text | identifier | date | timestamp | int | decimal | geo (Phase 4) | ref.
+- `type` ∈ text | identifier | date | timestamp | int | decimal | geo (Phase 5) | ref.
 - `sensitivity` names a handling code — property-level minimum, enforced in row/field
   filters.
 - `conflicts: preserve` marks properties where contradictory claims are expected and
@@ -121,7 +125,7 @@ actions:
   adjudicate_identity: {roles: [analyst], audit: true, dual_control_for: [protected_person]}
   register_evidence:   {roles: [analyst, investigator], audit: true}
   transfer_custody:    {roles: [evidence_officer, analyst], audit: true}
-  seal_record:         {roles: [supervisor], audit: true}     # Phase 6
+  seal_record:         {roles: [supervisor], audit: true}     # Phase 7
 ```
 `audit: true` is currently mandatory for all actions; the key exists so the validator
 can *reject* any action declared without it.
@@ -141,7 +145,7 @@ can *reject* any action declared without it.
 |---|---|---|
 | Pydantic validators | `aegis/ontology/_generated/models.py` | actions, API bodies |
 | FGA object-type stubs | `infra/fga/_generated.fga` fragment | authz model review |
-| UI descriptors | `aegis/api/_generated/ui_meta.json` | generic entity screens (Phase 3) |
+| UI descriptors | `aegis/api/_generated/ui_meta.json` | generic entity screens (Phase 4) |
 
 Generated files are committed; CI fails if regeneration produces a diff (ontology and
 code drifted).

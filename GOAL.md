@@ -760,6 +760,119 @@ This enables questions such as:
 
 > What did investigators know on 1 March, based only on information legally available at that time?
 
+## 7.8 Ontology architecture
+
+Aegis's domain model is organized as a layered ontology in the sense proven by
+Palantir Foundry: the ontology is the operational layer that connects integrated
+data to the applications where decisions happen. Aegis adopts Foundry's layer
+structure while keeping its own stricter provenance rules (see §7.10 for the
+explicit mapping and divergences).
+
+**Semantic layer — what exists.**
+
+* **Object types** define entities (person, organization, location, vehicle,
+  phone number) and events. They are schemas; individual entities are instances.
+* **Properties** define an object type's characteristics. In Aegis a property
+  *value* is always a claim (Rule 2) — the ontology entry defines validation,
+  sensitivity, and display, never a mutable column.
+* **Link predicates** define relationships between object types. Every link
+  instance is a claim with source, grading, and time.
+* **Interfaces** describe shared shapes across object types (e.g. `Party` over
+  person and organization; `Identifiable` for anything carrying registry
+  identifiers). Workflows and analytics target interfaces so new object types
+  inherit behavior without new code. Prefer composition of focused interfaces
+  over wide, sparse object types.
+* **Shared property types** define a property once (e.g. `alias`,
+  `registered_identifier`) and reuse it across object types with consistent
+  semantics, formatting, and sensitivity.
+
+**Kinetic layer — what can happen.**
+
+* **Action types** are the only write path. Each declares its parameters, its
+  submission criteria (who may run it, against what state), its validation
+  rules, and its side effects (notifications, webhooks, projection refresh).
+  Every execution is audited.
+* **Functions** are declared, versioned derivations over the ontology: computed
+  predicates (e.g. prison co-location from overlapping remand windows), derived
+  display values, and rule-based inference. A function's output is attributed to
+  an algorithmic source and enters the store as a suggestion or a system claim —
+  never as anonymous fact (Rule 2, §7.6).
+
+**Consumption layer — how it is used.**
+
+* **Projections** index recorded claims into query-serving shapes (graph views,
+  search indexes, materialized edges). They are rebuildable caches, never canon.
+* **Object sets** are saved, composable, access-controlled queries over objects
+  — the unit that feeds analytics, watchlists, and bulk operations.
+* **Object views** are the entity-360 surface: everything known about one
+  entity — claim-derived properties, links, timeline, sources, cases — with
+  every displayed value traceable to its claims.
+* **Typed SDKs** are generated from the ontology (Python and TypeScript), so
+  applications are written against domain types, not raw HTTP. SDK tokens are
+  scoped to the intersection of the application's grant and the user's own
+  permissions.
+
+**Governance layer — how it changes.**
+
+The ontology artifact is versioned (semver), changes flow through a proposal →
+review → migration workflow, historical versions remain interpretable, and every
+consumer (validators, authorization types, UI descriptors, SDKs) is regenerated
+from it. Drift between ontology and code is a build failure.
+
+## 7.9 Ontology design principles
+
+These principles govern every ontology change; reviewers reject changes that
+violate them.
+
+* **Model reality, not systems.** Object types represent real-world entities —
+  a person, a vessel, a meeting — never a source system's table, API response,
+  or spreadsheet tab.
+* **Competency questions are requirements.** Each ontology increment states the
+  analyst questions it must answer ("Which persons shared a prison block with X
+  during 2019?", "What sources support this edge?") and keeps them as executable
+  tests against seeded data.
+* **Curate properties intentionally.** Every property has clear investigative
+  or technical value. Reject the kitchen sink: mapping source columns 1:1 into
+  object types.
+* **Separate identity from observation.** Entities are stable identities;
+  measurements and sightings about them are events/claims. A source row that
+  bundles several real-world things is decomposed into linked objects, never
+  modeled as one wide type (no embedded entities).
+* **Name in the domain's language.** `person.aliases`, not `tbl_aka_names`;
+  predicates read as statements a human analyst would make. No place names, no
+  compound relations, no credibility words inside predicate names.
+* **Minimal ontological commitment, additive evolution.** Assert only what is
+  needed; extend by adding types, interfaces, and links rather than renaming or
+  overloading. Protect core types — builders extend via new linked types and
+  interface implementations, not breaking changes.
+* **Rule of three.** The third time a shape is duplicated, refactor it into a
+  shared property type or interface.
+
+## 7.10 Aegis ↔ Palantir Foundry concept map
+
+| Foundry concept | Aegis counterpart | Divergence (deliberate) and why |
+| --- | --- | --- |
+| Ontology (semantic + kinetic layers) | `ontology/aegis.yaml`, the single domain artifact | Same role; Aegis's is a versioned file in git, not a managed service |
+| Object type / object | `object_types` entry / `entity` row | Aegis entities carry no asserted properties of their own — labels are rebuilt from claims (Rule 2) |
+| Property value | claim with an auto-derived `has_<property>` predicate | Values are claims with source, grading, and time; contradictory values coexist (Rule 5) |
+| Link type / link | predicate / claim between two entities | Links are claims — provenance and time are mandatory, and symmetric links store one canonical row |
+| Interface, shared property type | `interfaces:` / `shared_properties:` (ontology v2) | Adopted as-is |
+| Action type (parameters, submission criteria, side effects) | `actions:` declarations enforced by the actions layer | Adopted; `audit: true` is mandatory, not optional (Article X) |
+| Function / function-backed action | `functions:` registry of versioned derivations | Function output is attributed to an algorithmic source and is suggest-only or an explicit system claim (§7.6) |
+| Datasource backing + writeback datasets | `source` / `source_record` + review queue | No silent writeback: machine output must pass human adjudication before it becomes a recorded claim |
+| Object Storage v2 (funnel, object databases, Object Set Service) | projection builders + object sets | Projections are disposable caches; losing every projection loses nothing |
+| Object Views / Object Explorer | entity-360 object views | Every displayed value links back to the claims and sources behind it |
+| OSDK (generated typed clients) | generated Python/TypeScript SDKs from aegis.yaml | Same dual scoping: app grant ∩ user permission |
+| Ontology proposals / branching | proposal → review → semver bump + migration, history retained | Scaled to a single-repo workflow |
+| Security markings, mandatory controls | handling codes + OpenFGA relations + row/field filters | ReBAC-first (case membership, handler-of), evaluated at query time (Rule 6) |
+
+The one divergence that defines Aegis: **Foundry's object properties hold current
+values; Aegis's hold competing claims.** Foundry layers user edits over source
+data to present one truth. Aegis presents graded, sourced, possibly conflicting
+assertions and lets analysts assess them — because in intelligence work the
+disagreement *is* the data. Everything else about the layer architecture
+transfers.
+
 ---
 
 # 8. Graph representation
@@ -2480,34 +2593,36 @@ Hundreds or thousands of concurrent investigators
 
 # 36. Technology recommendation
 
-| Layer                               | Recommended baseline                  |
-| ----------------------------------- | ------------------------------------- |
-| Web application                     | React + TypeScript                    |
-| Application shell/BFF               | Next.js or dedicated TypeScript BFF   |
-| Graph visualization                 | Sigma.js or Cytoscape.js              |
-| Map                                 | MapLibre GL JS + deck.gl              |
-| Tables                              | AG Grid or equivalent enterprise grid |
-| Core domain                         | Kotlin/Java with Spring Boot          |
-| Analytics services                  | Python with FastAPI                   |
-| Connectors/high-throughput services | Kotlin/Java or Go                     |
-| Workflow                            | Temporal                              |
-| Event streaming                     | Apache Kafka                          |
-| Stream processing                   | Apache Flink                          |
-| OLTP                                | PostgreSQL                            |
-| Spatial                             | PostGIS                               |
-| Graph                               | Neo4j Enterprise initially            |
-| Search                              | OpenSearch                            |
-| Lakehouse                           | S3/MinIO + Apache Iceberg             |
-| Federated SQL                       | Trino                                 |
-| Batch analytics                     | Spark                                 |
-| Cache                               | Redis                                 |
-| Policy                              | OPA plus ReBAC service                |
-| Identity                            | Existing agency IdP, OIDC/SAML        |
-| Secrets                             | Vault + KMS/HSM                       |
-| Containers                          | Kubernetes                            |
-| Observability                       | OpenTelemetry + Prometheus/Grafana    |
-| Model registry                      | MLflow or equivalent                  |
-| Deployment                          | Argo CD/GitOps                        |
+Aegis is built and taken to production as **one modular Python application plus
+proven platform services**. Python 3.12 + FastAPI is the *reference
+implementation* of the core domain — not a stepping stone to a JVM rewrite
+(ADR-020; the earlier Kotlin/Spring end-state recommendation is withdrawn).
+Scale pressure is answered by the trigger-gated upgrades below (details and
+triggers in `speckit/plan.md` §2 and `speckit/roadmap.md` Phase 9), never by
+speculative adoption.
+
+| Layer | Reference implementation | Trigger-gated upgrade |
+| ----- | ------------------------ | --------------------- |
+| Web application | React + TypeScript (Phase 4) | — |
+| Graph visualization | Cytoscape.js | Sigma.js when WebGL-scale rendering is needed |
+| Map | MapLibre GL JS + PostGIS tiles | + deck.gl for large event layers |
+| Core domain + APIs | Python 3.12 + FastAPI | — (permanent) |
+| Ontology + SDKs | `ontology/aegis.yaml` + generated Pydantic/TypeScript clients | — |
+| Analytics | Python (networkx/igraph, Splink) | Spark for batch scale |
+| Workflow | DB status columns | Temporal for multi-day approval chains |
+| Event streaming | none (batch) | Kafka when a real continuous feed exists |
+| OLTP / system of record | PostgreSQL 16 | — (permanent) |
+| Spatial | PostGIS | — |
+| Graph traversal | recursive CTEs over `edge_projection` | Neo4j when traversal-dominant and CTE p95 > 2 s |
+| Search | Postgres FTS + `pg_trgm` (+ ICU) | OpenSearch on multilingual golden-set failure or corpus scale |
+| Lakehouse | Parquet + DuckDB | Iceberg + Trino past single-node comfort |
+| Cache | in-process | Redis when measured need appears |
+| Policy | OpenFGA (ReBAC) + handling-code row filters | + OPA if policy-as-code outgrows relationships |
+| Identity | Keycloak (OIDC) | agency IdP via OIDC/SAML on agency deployment |
+| Secrets | env + compose secrets | Vault + KMS/HSM on multi-user deployment |
+| Containers | Docker Compose | Kubernetes + Argo CD at multi-host / agency cell |
+| Observability | structlog JSON + healthchecks | OpenTelemetry + Prometheus/Grafana (Phase 9 baseline) |
+| Model registry | git-versioned model configs | MLflow when models multiply |
 
 ---
 
@@ -2637,90 +2752,62 @@ Administrators should not automatically have access to investigation content.
 
 # 40. Implementation roadmap
 
-## Phase 0 — Governance before code
+The authoritative, buildable roadmap lives in **`speckit/roadmap.md`** (phases
+P0–P9, gated by exit criteria, not dates), with a full charter per phase in
+**`speckit/phases/`**. The P-numbering there supersedes the phase numbers this
+section previously used. Summary:
 
-Define:
+## Milestone I — Governed foundation *(complete)*
 
-* Legal scope.
-* Oversight model.
-* Data-sharing agreements.
-* Source-grading scheme.
-* Classification model.
-* Retention.
-* User roles.
-* Prohibited uses.
-* Initial ontology.
+* **P0 Governance before code** — spec kit, constitution, roles, grading and
+  handling schemes, starter ontology.
+* **P1 Claim store, evidence vault, RBAC, audit** — governed Postgres claim
+  store, content-addressed evidence, Keycloak/OpenFGA, hash-chained audit,
+  ingestion → review queue, projections feeding the existing UI.
 
-## Phase 1 — Investigative foundation
+## Milestone II — MVP ★
 
-Build:
+* **P2 Identity, provenance & analyst console** — entity resolution with
+  reversible, versioned identity; review-queue and adjudication UI; "Why
+  connected?" provenance on every edge; basic entity search; scripted
+  end-to-end demo. **At this gate Aegis is a usable product:** land a source →
+  extraction suggests → human reviews → governed graph explains itself.
 
-* Identity and access.
-* Cases.
-* Intelligence reports.
-* Claims.
-* Sources.
-* Evidence metadata.
-* Chain of custody.
-* Audit.
-* Document storage.
-* Basic search.
+## Milestone III — Ontology platform
 
-## Phase 2 — Entity and graph intelligence
+* **P3 Ontology v2: semantic & kinetic completion** — interfaces, shared
+  property types, functions (declared derivations), action types with
+  parameters/submission criteria/side effects, ontology change management,
+  generated Python/TypeScript SDKs (§7.8).
+* **P4 Investigation workspace & object views** — case-scoped React workspace
+  on the generated SDK, entity-360 object views, hypotheses, tasks, timeline
+  and as-of reads.
 
-Add:
+## Milestone IV — Full intelligence domain
 
-* Entity resolution.
-* Versioned identity clusters.
-* Canonical graph.
-* Graph workspace.
-* Provenance.
-* “Why connected?”
-* Timeline.
+* **P5 Events, geospatial & time** — event object types with participants,
+  PostGIS geometries with honest precision, map/timeline/graph synchronization,
+  movement ingestion.
+* **P6 Search, object sets & governed analytics** — multilingual global
+  search, object sets as governed reusable queries, explainable network
+  analytics as findings, finding→claim promotion, watchlists.
 
-## Phase 3 — Geospatial and event intelligence
+## Milestone V — Trust boundaries & AI
 
-Add:
+* **P7 Sharing & governance hardening** — compartments and informant
+  protection, sealed/expunged states, disclosure packages, break-glass,
+  legal-authority objects.
+* **P8 Controlled AI & assisted reasoning** — schema-aware extraction,
+  translation, summarization, hypothesis assistance — all suggest-only through
+  the review queue (§26).
 
-* Map.
-* Travel.
-* Vehicle movements.
-* Communication metadata.
-* Financial events.
-* Time-aware graph projections.
+## Milestone VI — Production
 
-## Phase 4 — Multi-agency federation
-
-Add:
-
-* Agency cells.
-* Disclosure packages.
-* Originator control.
-* Federated queries.
-* Cross-border policy packs.
-* Signed exchange.
-
-## Phase 5 — Advanced analytics
-
-Add:
-
-* Network metrics.
-* Community detection.
-* Financial-flow models.
-* Movement correlation.
-* Anomaly detection.
-* Explainable alerts.
-
-## Phase 6 — Controlled AI
-
-Add:
-
-* Document extraction.
-* Translation.
-* Transcript analysis.
-* Case summarization.
-* Hypothesis assistance.
-* Source-grounded investigative assistant.
+* **P9 Production readiness & scale-out** — observability, SLOs, hardening,
+  DR drills, performance baselines; plus the trigger-gated upgrades (Neo4j,
+  OpenSearch, Kubernetes, Kafka, …). Multi-agency federation and sovereign
+  cells (§33) remain here, triggered by a real second agency — not built on
+  speculation.
 
 ---
 

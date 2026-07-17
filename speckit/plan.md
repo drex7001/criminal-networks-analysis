@@ -10,7 +10,7 @@ One modular Python application + off-the-shelf platform services, per GOAL.md §
 │  UI                                                             │
 │  Phase 1: existing Cytoscape explorer (unchanged, reads         │
 │           projection JSON)                                      │
-│  Phase 3+: React+TS workspace (ontology-driven screens,        │
+│  Phase 4+: React+TS workspace (ontology-driven screens,        │
 │           Sigma.js/Cytoscape graph, MapLibre map, timeline)     │
 └──────────────────────────────┬─────────────────────────────────┘
                                │ OIDC (Keycloak)
@@ -42,9 +42,9 @@ review queue; the only path into canonical tables is a human-executed action.
 
 ## 2. Stack decisions (now vs GOAL.md end-state)
 
-| Concern | Phase 1–5 choice | GOAL.md end-state | Objective upgrade trigger |
+| Concern | Reference choice (ADR-020) | Trigger-gated end-state | Objective upgrade trigger |
 |---|---|---|---|
-| Language/framework | Python 3.12 + FastAPI (existing skills & code) | Kotlin/Spring core + Python analytics | Second backend team, or JVM-grade throughput need |
+| Language/framework | Python 3.12 + FastAPI | — (permanent; JVM rewrite withdrawn, ADR-020) | — |
 | System of record | PostgreSQL 16 | PostgreSQL | — (permanent) |
 | Graph traversal | Recursive CTEs over `edge_projection` matview | Neo4j Enterprise | Traversal is dominant access pattern AND CTE p95 > 2 s on benchmarked realistic data (GOAL.md §11.5) |
 | Spatial | PostGIS | PostGIS | — |

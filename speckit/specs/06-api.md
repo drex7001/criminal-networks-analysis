@@ -86,5 +86,5 @@ FastAPI, `/v1/*`, OIDC bearer auth. Every route lists its authorization gate
 - Pagination: cursor-based (`?cursor=`, ULID-ordered).
 - No existence leaks: unauthorized and nonexistent both return 404 on single-resource
   GETs (specs/03 §4).
-- Exports (any bulk out-format) go through `POST /v1/exports` (Phase 6 packages;
+- Exports (any bulk out-format) go through `POST /v1/exports` (Phase 7 packages;
   Phase 1: audited JSON dump of an authorized projection only).

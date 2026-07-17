@@ -1,19 +1,47 @@
 # Aegis Roadmap
 
 Phases are gated by **exit criteria**, not dates. Effort estimates assume one
-hands-on developer part-time; treat them as relative sizes. GOAL.md phase numbers
-(§40) are cross-referenced. Nothing in a later phase may violate the constitution to
-ship earlier.
+hands-on developer part-time; treat them as relative sizes. Nothing in a later
+phase may violate the constitution to ship earlier.
+
+This is **roadmap v2** (ADR-022): phases are grouped into architectural
+milestones, renumbered P0–P9, and a **★ MVP gate** closes Phase 2 — Aegis must
+be a usable, demonstrable product there before any later phase starts. Each
+remaining phase has a full charter in `phases/`; this file is the spine.
+GOAL.md §40 now defers to this file.
 
 ```
-P0 governance ▸ P1 claim store + RBAC ▸ P2 identity & provenance
-▸ P3 investigation workspace ▸ P4 geo & events ▸ P5 search & analytics
-▸ P6 sharing & governance hardening ▸ P7 scale-out options
+Milestone I    Governed foundation      P0 governance ▸ P1 claim store + RBAC        [DONE]
+Milestone II   MVP                      P2 identity, provenance & analyst console    ★ MVP
+Milestone III  Ontology platform        P3 ontology v2 ▸ P4 workspace & object views
+Milestone IV   Intelligence domain      P5 events, geo & time ▸ P6 search, object sets & analytics
+Milestone V    Trust boundaries & AI    P7 sharing & governance ▸ P8 controlled AI & reasoning
+Milestone VI   Production               P9 production readiness & scale-out
 ```
+
+Reasoning capability arrives in three deliberate steps: **mechanism** (P3
+functions/derivations) → **deterministic analytics** (P6 explainable findings)
+→ **assisted reasoning** (P8, suggest-only per Article VII).
+
+### Numbering map (v1 → v2)
+
+| v1 phase | v2 phase |
+|---|---|
+| P0 governance | P0 (unchanged) |
+| P1 claim store + RBAC | P1 (unchanged) |
+| P2 identity & provenance | **P2 MVP** (enlarged: + review-queue UI polish, basic search, demo runbook) |
+| — | **P3 ontology v2** (new — Foundry-informed semantic/kinetic completion, ADR-021) |
+| P3 investigation workspace | P4 (+ object views) |
+| P4 geo & events | P5 |
+| P5 search & analytics | P6 (+ object sets) |
+| P6 sharing & governance hardening | P7 |
+| P7 scale-out trigger table | P9 (+ mandatory production baseline); controlled-AI row promoted to **P8** |
 
 ---
 
-## Phase 0 — Governance before code  *(GOAL.md Phase 0 — this spec kit)*
+## Milestone I — Governed foundation *(complete)*
+
+### Phase 0 — Governance before code *(GOAL.md §40 M-I · this spec kit)*
 
 **Goal.** Decide the rules before schemas exist.
 
@@ -21,161 +49,187 @@ P0 governance ▸ P1 claim store + RBAC ▸ P2 identity & provenance
 - [x] This spec kit (constitution, spec, plan, ADRs, roadmap, detailed specs).
 - [x] Starter ontology `ontology/aegis.yaml` (object types, predicates, grading,
       handling codes, actions).
-- [ ] Confirm grading normalization tables (specs/02 §5) against the sources you
-      actually use.
-- [ ] Decide handling-code ladder for an OSINT-only deployment
-      (proposed: `open < restricted < sensitive`).
+- [x] Grading normalization tables confirmed against the sources actually used —
+      exercised by the Phase 1 legacy migration (ConfidenceTag → credibility/
+      verification map, ADR-011/ADR-016).
+- [x] Handling-code ladder for an OSINT-only deployment decided and shipped in
+      ontology 0.3.0: `open < restricted < sensitive`.
 
-**Exit criteria.** Kit reviewed; ontology validates; you can state, for any feature
-idea, which constitutional article governs it.
+**Exit criteria.** Met — kit reviewed; ontology validates in CI; every feature
+idea can be traced to a governing article.
 
----
+### Phase 1 — Claim store, evidence vault, RBAC, audit *(effort: L · COMPLETE)*
 
-## Phase 1 — Claim store, evidence vault, RBAC, audit  *(GOAL.md Phase 1 · effort: L)*
-
-**Goal.** The prototype's data lives in a governed Postgres claim store; every access
-is authenticated, authorized, and audited; the existing UI keeps working, now fed from
-a projection.
-
-**Deliverables**
-1. `infra/docker-compose.yml`: postgres+postgis, minio, keycloak, openfga + bootstrap.
-2. Ontology loader/validator (`aegis.ontology`) + CI check.
-3. Alembic schema: `source`, `source_record`, `entity`, `claim`, `claim_relation`,
-   `review_queue`, `case_file`, `case_member`, `evidence_item`, `derivative`,
-   `custody_event`, `audit_log` (specs/02).
-4. Evidence vault adapter; migrate `Files/` + `output/ingest/` with provenance
-   envelopes and content hashes.
-5. **Legacy migration**: `real_dataset.py` SOURCES → `source` rows; curated
-   nodes/edges → entities + recorded claims (mapping in specs/02 §6). LLM/structural
-   passes rewired to emit `suggested` claims.
-6. AuthN/AuthZ: Keycloak realm, FGA model + tuples, FastAPI dependencies, row filters.
-7. Hash-chained audit writer + `aegis audit verify`.
-8. Projection builder: claims → `edge_projection` matview + legacy
-   `output/real_graph.json` (byte-compatible shape) + optional Cypher.
-9. API v1 core routes (specs/06): claims, entities, sources, review queue, graph
-   projection, audit (auditor role).
-
-**Exit criteria**
-- `aegis projections rebuild` reproduces the current graph (snapshot test green).
-- Anonymous request → 401; analyst without case membership → 403; every decision in
-  `audit_log`; chain verifies.
-- A suggested claim from the Gemini pass can be accepted in the API and appears in the
-  rebuilt projection; rejected ones never do.
-- Postgres restore + projection rebuild from backup works (tested once).
+Delivered T1–T16: governed Postgres claim store, content-addressed evidence
+vault, Keycloak OIDC + OpenFGA ReBAC + row filters, hash-chained audit,
+extraction rewired to a review queue, projection builder feeding the legacy UI,
+API v1, backup/restore drill. See `tasks-phase-1.md` and
+`phase-1-exit-review.md`; divergences recorded as ADR-017…019. All four exit
+boxes checked.
 
 ---
 
-## Phase 2 — Identity resolution & provenance UX  *(GOAL.md Phase 2 · effort: L)*
+## Milestone II — MVP
 
-**Goal.** Slugs stop being identity; every connection explains itself.
+### Phase 2 — Identity, provenance & analyst console *(GOAL.md §40 M-II · effort: L · ★ MVP gate)*
+
+**Goal.** Slugs stop being identity; every connection explains itself; and the
+platform becomes **usable end-to-end by an analyst** — land a source →
+extraction suggests claims → review/adjudicate → governed graph with
+provenance. Charter: `phases/phase-02-mvp-identity-provenance.md` · tasks:
+`tasks-phase-2.md`.
 
 **Deliverables**
-1. `mention` extraction from source records; legacy slugs become one-mention clusters.
-2. Deterministic ER rules (NIC, exact registry identifiers) + Splink pipeline with
-   transliteration-aware features (specs/05); candidate pairs with score breakdowns.
-3. Adjudication action + queue UI (accept/reject/split/merge, evidence note required);
-   versioned `identity_cluster` history.
-4. "Why connected?" API + UI panel: claims, sources, contradictions behind any edge.
-5. Contradiction/corroboration recording (`claim_relation`) surfaced in the detail
-   panel.
+1. `mention` extraction from source records; legacy slugs become one-mention
+   clusters.
+2. Deterministic ER rules + Splink pipeline with transliteration-aware features
+   (specs/05); candidate pairs with score breakdowns.
+3. Adjudication action + queue UI (accept/reject/split/merge, evidence note
+   required); versioned identity-cluster history.
+4. "Why connected?" API + UI panel: claims, sources, contradictions behind any
+   edge.
+5. Contradiction/corroboration recording surfaced in the detail panel.
 6. Review-queue UI for suggested claims (Phase 1 exposed only the API).
+7. Basic entity search (`pg_trgm` over names/aliases/mentions) in API + UI —
+   pulled forward from old P5, minimal scope.
+8. MVP demo runbook (`docs/MVP_DEMO.md`): scripted full-loop walkthrough on the
+   real OSINT corpus.
 
-**Exit criteria**
-- Merging then splitting two identities restores the exact prior state (history test).
+**Exit criteria — the MVP gate**
+- Merging then splitting two identities restores the exact prior state
+  (history test).
 - Every rendered edge opens a provenance panel listing ≥ 1 source record.
-- A seeded transliteration variant pair (e.g. Sinhala/English spellings) is found by
+- A seeded transliteration variant pair (Sinhala/English spellings) is found by
   Splink, adjudicated, and merges cleanly.
+- **The full ingest → suggest → review → accept → projection loop runs live in
+  one sitting, driven from the UI by someone who didn't build it.**
 
 ---
 
-## Phase 3 — Investigation workspace  *(GOAL.md Phase 2/§18 · effort: M)*
+## Milestone III — Ontology platform
 
-**Goal.** Work happens inside access-scoped cases, with hypotheses instead of vibes.
+### Phase 3 — Ontology v2: semantic & kinetic completion *(GOAL.md §7.8–7.10 · effort: M · new, ADR-021)*
 
-**Deliverables**
-1. Case CRUD + FGA-scoped membership; claims/evidence linkable to cases.
-2. Hypotheses with supporting/contradicting claim links + missing-info notes
-   (GOAL.md §18).
-3. Tasks/leads (lightweight status columns — no workflow engine, per plan §2).
-4. React + TypeScript shell (ontology-driven entity pages, graph view embedded);
-   legacy explorer stays until parity.
-5. Timeline view over claim/event times with uncertainty rendering; as-of mode
-   (`?asOf=`) end-to-end.
+**Goal.** `aegis.yaml` grows from vocabulary file into a full ontology-platform
+artifact — the Foundry-class layer the rest of the product is built on.
+Charter: `phases/phase-03-ontology-v2.md` · spec: `specs/08-ontology-v2.md`.
 
-**Exit criteria**
-- A non-member of a case cannot see its claims via any endpoint (authz matrix test).
-- A hypothesis page shows both supporting and contradicting claims (Article VIII).
-- "What was recorded before date X?" returns a defensible as-of answer.
+**Deliverables (summary)** — DSL v2: **interfaces** + **shared property
+types**; **functions registry** (declared derivations; prison co-location
+becomes the first computed predicate); **actions v2** (parameters, submission
+criteria, side effects); **ontology change management** (proposal → review →
+semver + migration, `ontology/history/`); **generated SDKs** (typed Python +
+TypeScript clients alongside existing Pydantic/FGA/UI-meta codegen).
+
+**Exit criteria.** A new predicate added to an interface flows to API
+validation, FGA stubs, and both SDKs with zero hand-written domain code; a
+computed predicate regenerates deterministically; CI fails on codegen drift.
+
+### Phase 4 — Investigation workspace & object views *(GOAL.md §18, §29–30 · effort: M/L)*
+
+**Goal.** Work happens inside access-scoped cases in a real product UI, with
+hypotheses instead of vibes. Charter:
+`phases/phase-04-workspace-object-views.md`.
+
+**Deliverables (summary)** — React + TypeScript workspace **built on the
+generated SDK** (ontology-driven screens); **object views** (entity-360:
+claim-derived properties, links, timeline, sources, cases); case UI +
+FGA-scoped membership; hypotheses with supporting/contradicting links; tasks/
+leads; timeline + as-of mode end-to-end; legacy explorer retired at parity.
+
+**Exit criteria.** Authz matrix holds in the UI (non-member sees nothing via
+any endpoint); a hypothesis page shows both sides (Article VIII); "what was
+recorded before date X?" returns a defensible as-of answer; adding an entity
+type via ontology alone yields a working object view.
 
 ---
 
-## Phase 4 — Geospatial & event intelligence  *(GOAL.md Phase 3 · effort: M)*
+## Milestone IV — Intelligence domain
+
+### Phase 5 — Events, geospatial & time *(GOAL.md §7.3, §16, §17 · effort: M)*
 
 **Goal.** Places and events become first-class, with honest precision.
+Charter: `phases/phase-05-events-geo-time.md`.
 
-**Deliverables**
-1. `location` entities with PostGIS geometry + explicit `precision` (exact / centroid /
-   area / city / country — GOAL.md §16.4).
-2. Event objects (meeting, arrest, travel, observation) with participants — replacing
-   binary edges where >2 parties or uncertainty matter (GOAL.md §7.3).
-3. MapLibre map view synced with timeline + graph selection.
-4. Movement/travel ingestion path (border/press reports → events with sources).
+**Deliverables (summary)** — event object types (meeting, arrest, travel,
+observation) with participants, replacing binary edges where > 2 parties or
+uncertainty matter; PostGIS geometry + explicit `precision` on locations;
+MapLibre map synced with timeline + graph selection; movement/travel ingestion
+path.
 
-**Exit criteria**
-- The same incident renders consistently on map, timeline, and graph from one claim
-  set; precision is visually distinct.
-- An event with 3+ participants round-trips through API and UI.
+**Exit criteria.** The same incident renders consistently on map, timeline,
+and graph from one claim set; precision is visually distinct; an event with
+3+ participants round-trips through API and UI.
 
----
+### Phase 6 — Search, object sets & governed analytics *(GOAL.md §12, §13, §32 · effort: M)*
 
-## Phase 5 — Search & governed analytics  *(GOAL.md Phase 5 · effort: M)*
+**Goal.** Find anything you're allowed to find; save and share what you found;
+compute metrics that explain themselves. Charter:
+`phases/phase-06-search-object-sets-analytics.md`.
 
-**Goal.** Find anything you're allowed to find; compute metrics that explain
-themselves.
+**Deliverables (summary)** — global search (FTS + trigram + transliteration,
+authorization re-check before hydration, golden Sinhala/Tamil/English test
+set); **object sets** — saved, composable, access-controlled queries (GOAL.md
+§7.8) feeding analytics, watchlists, and bulk actions; analytics service
+(k-hop, paths, Leiden, brokerage, shared identifiers) returning
+`AnalyticFinding` with method + caveats (Article IX); finding→claim promotion;
+watchlists with alert triage.
 
-**Deliverables**
-1. Global search: FTS + trigram + transliteration keys across entities, claims,
-   documents; grouped results; authorization re-check before hydration (ADR-012).
-2. Golden multilingual test set (Sinhala/Tamil/English names) gating search quality.
-3. Analytics service: k-hop, paths, Leiden communities (exists), brokerage, shared
-   identifiers — each returning an `AnalyticFinding` with method, inputs, and caveat
-   text (Article IX).
-4. Finding-promotion flow: finding → review → assessed claim.
-5. Basic watchlists (exact identifiers) with alert triage statuses (GOAL.md §32,
-   minimal).
-
-**Exit criteria**
-- Golden search set precision/recall targets met.
-- No metric renders without its warning; promoting a finding requires an actor and
-  survives in audit.
+**Exit criteria.** Golden search-set precision/recall targets met; no metric
+renders without its warning; promoting a finding requires an actor and
+survives in audit; an object set is created, shared case-scoped, and drives
+both an analytic run and a watchlist.
 
 ---
 
-## Phase 6 — Sharing & governance hardening  *(GOAL.md Phase 4 + §21–24 · effort: L)*
+## Milestone V — Trust boundaries & AI
 
-**Goal.** Ready for a second user you don't fully trust, and for output that leaves
-the system.
+### Phase 7 — Sharing & governance hardening *(GOAL.md §21–24, §27 · effort: L)*
 
-**Deliverables**
-1. Compartments (FGA) incl. informant-pattern separation (pseudonym objects,
-   handler-only reads — GOAL.md §21) if/when such data exists.
-2. Sealed/expunged handling: judicial-state model, projection exclusion.
-3. Disclosure/export packages: manifest, included/redacted field preview, hash
-   manifest, recipient record (GOAL.md §27 exchange packages, scaled).
-4. Break-glass flow + insider-threat audit queries (bulk reads, off-case access).
-5. Legal-authority objects attached to sensitive collections (GOAL.md Rule 4, scaled
-   to OSINT: collection-policy references).
+**Goal.** Ready for a second user you don't fully trust, and for output that
+leaves the system. Charter: `phases/phase-07-sharing-governance.md`.
 
-**Exit criteria**
-- An export never contains handling levels above the recipient's grant; redaction log
-  attached.
-- A sealed record disappears from all projections but remains for the auditor role.
+**Deliverables (summary)** — compartments (FGA) incl. informant-pattern
+separation; sealed/expunged judicial-state handling with projection exclusion;
+disclosure/export packages (manifest, redaction preview, hash manifest,
+recipient record); break-glass flow + insider-threat audit queries;
+legal-authority objects on sensitive collections.
+
+**Exit criteria.** An export never contains handling levels above the
+recipient's grant, with redaction log attached; a sealed record disappears
+from all projections but remains for the auditor role.
+
+### Phase 8 — Controlled AI & assisted reasoning *(GOAL.md §26 · effort: M)*
+
+**Goal.** AI accelerates analysts without ever becoming a source of fact —
+promoted from the old trigger table to a real phase. Charter:
+`phases/phase-08-controlled-ai.md`.
+
+**Deliverables (summary)** — extraction v2 (schema-aware, ontology-grounded
+prompts via the generated SDK); Sinhala/Tamil ↔ English translation stored as
+derivatives (Article IV); source-grounded summarization; hypothesis assistance
+(suggests supporting/contradicting claims); contradiction-detection
+suggestions — **all through the review queue** (Article VII).
+
+**Exit criteria.** Every AI output type lands as a suggestion with source
+references; a test proves zero direct canonical writes from any AI code path;
+assistant answers cite claim IDs.
 
 ---
 
-## Phase 7 — Scale-out options  *(GOAL.md Phases 4–6 · effort: as-needed)*
+## Milestone VI — Production
 
-Triggered only by the ADR revisit conditions, not by ambition:
+### Phase 9 — Production readiness & scale-out *(GOAL.md §33–35 · effort: ongoing)*
+
+Charter: `phases/phase-09-production.md`.
+
+**Mandatory baseline** — OpenTelemetry observability + dashboards; SLOs and
+alerting; security hardening pass (secrets, TLS, dependency scanning); backup
+automation + scheduled restore drills; pen-test checklist; load/performance
+benchmarks on a realistic corpus; operational runbooks.
+
+**Trigger-gated options** — only when the ADR revisit conditions fire, never
+by ambition:
 
 | Upgrade | Trigger (from decisions.md) |
 |---|---|
@@ -185,8 +239,11 @@ Triggered only by the ADR revisit conditions, not by ambition:
 | Iceberg/Trino event lake | plan §2: DuckDB single-node limits |
 | Kubernetes + GitOps | ADR-010: multi-host / agency cell |
 | Temporal workflows | plan §2: multi-day human approval chains |
+| Kafka streaming | plan §2: a real continuous feed exists |
 | Federation / sovereign cells | A real second agency (GOAL.md §33.1) |
-| Controlled AI assistants beyond extraction | GOAL.md Phase 6 flow (§26) — summarization, contradiction detection, always via review queue |
+
+**Exit criteria.** Baseline items all done; every trigger row either fired and
+delivered, or its trigger documented as unmet at review time.
 
 ---
 
@@ -195,7 +252,8 @@ Triggered only by the ADR revisit conditions, not by ambition:
 | Risk | Mitigation |
 |---|---|
 | Speckit rots as code diverges | Exit-criteria checklists reviewed at each phase close; ADR append-only discipline |
+| MVP scope creep | Anything not needed for the P2 demo loop moves to P3+; the charter's non-goals list is enforced in review |
 | RBAC friction tempts bypass ("it's just me") | Article VI test: authz dependency required on every route from the first commit |
 | Wrong merge contaminates analysis | Article V reversibility + Phase 2 history test |
-| LLM output creeps into canon | Article VII: single write path via adjudication action |
+| LLM output creeps into canon | Article VII: single write path via adjudication action; P8 zero-direct-write test |
 | Scope creep toward GOAL.md's full stack | Every infra addition needs an ADR trigger already met |

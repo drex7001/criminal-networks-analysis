@@ -10,7 +10,7 @@
 #   · no credibility words like "suspected_" (grading carries the doubt)
 # Dataset-specific verb mappings live in the migration adapter, not here.
 
-version: 0.3.0
+version: 0.3.1   # patch: comment/docs only — phase refs updated to roadmap v2 (ADR-022)
 namespace: aegis.lk
 
 # Ordered low → high; index = clearance level required (spec 03).
@@ -70,7 +70,7 @@ object_types:
     # (GOAL.md §7.1); use predicate `assessed_as_criminal_organization` when needed,
     # with jurisdiction + designating source.
 
-  location:            # Phase 4 gains geometry; declared now so claims can reference it
+  location:            # Phase 5 gains geometry; declared now so claims can reference it
     label: Location
     properties:
       name:      {type: text, required: true}
@@ -141,7 +141,7 @@ predicates:
   sibling_of:                      {subject: [person], object: [person], category: kinship, symmetric: true}
   spouse_of:                       {subject: [person], object: [person], category: kinship, symmetric: true}
 
-event_types: {}        # Phase 4: meeting, arrest, travel, observation (GOAL.md §7.3)
+event_types: {}        # Phase 5: meeting, arrest, travel, observation (GOAL.md §7.3)
 
 actions:
   record_claim:        {roles: [analyst, investigator], audit: true}
@@ -155,4 +155,4 @@ actions:
   open_case:           {roles: [analyst, investigator], audit: true}
   assign_case_member:  {roles: [supervisor],            audit: true}
   release_quarantine:  {roles: [supervisor],            audit: true}
-  seal_record:         {roles: [supervisor],            audit: true}   # Phase 6
+  seal_record:         {roles: [supervisor],            audit: true}   # Phase 7

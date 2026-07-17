@@ -48,7 +48,7 @@ Every probabilistic candidate above threshold enters `review_queue`
 explanation, verbatim from Splink's waterfall output). Mandatory human decision for:
 cross-document merges, any entity with `sensitivity`-elevated properties, any entity
 participating in ≥ N recorded claims (impact threshold), protected-person flag
-(Phase 6 informant compartment).
+(Phase 7 informant compartment).
 
 ## 3. Adjudication actions
 
