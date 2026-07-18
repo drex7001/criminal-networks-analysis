@@ -7,8 +7,9 @@ lettered subtasks keep the global T-numbering stable for pre-authored P3+ files.
 > **Status: ACTIVE.** Rewritten 2026-07-18 (ADR-033) after the external-review
 > disposition (`../reviews/2026-07-18-external-review-disposition.md`). Phase 2
 > closes with the **★ MVP gate** — see the charter. Gate criteria are
-> non-deferrable (ADR-025). Phase 1 closure addendum (T16a–T16d) blocks
-> Milestones B–D; Milestone A may run in parallel with it.
+> non-deferrable (ADR-025). The Phase 1 closure addendum (T16a–T16d), which
+> gated Milestones B–D, closed 2026-07-18 (PRs #11–#14). **Milestone A is
+> complete** (T17a–T17d, PRs #17–#20); Milestone B is the active work.
 
 ## Milestone A — Design pack (⛓ blocks B–D; specs rewritten before code) — **COMPLETE 2026-07-18**
 

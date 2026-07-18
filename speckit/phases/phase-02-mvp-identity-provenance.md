@@ -28,8 +28,9 @@ none is out of scope (see non-goals).
 
 ## Prerequisites
 
-- Phase 1 closure addendum T16a–T16d (blocks Milestones B–D; Milestone A may
-  run in parallel with it).
+- Phase 1 closure addendum T16a–T16d — **satisfied 2026-07-18** (PRs #11–#14).
+  It gated Milestones B–D; Milestone A ran in parallel and is now complete
+  (T17a–T17d, PRs #17–#20).
 
 ## Architecture layers touched
 

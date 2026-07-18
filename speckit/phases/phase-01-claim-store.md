@@ -1,7 +1,8 @@
 # Phase 1 Charter — Claim store, evidence vault, RBAC, audit
 
-Status: **COMPLETE with closure addendum** (T1–T16 delivered; T16a–T16d open —
-ADR-033; retrospective record — this phase predates the charter format; kept so
+Status: **COMPLETE** (T1–T16 delivered; the ADR-033 closure addendum T16a–T16d
+closed 2026-07-18 via PRs #11–#14; retrospective record — this phase predates
+the charter format; kept so
 `phases/` covers the whole P0–P9 pipeline) ·
 Constitutional basis: Articles I, IV, VI, VII, X, XI, XIII · GOAL.md §40 M-I
 
@@ -38,8 +39,9 @@ All four exit boxes checked; see the full walkthrough in
 The 2026-07 external review found that the original exit review deferred
 load-bearing governance items without owners, and that one criterion rested on
 the ADR-019 public-route exception (since superseded by ADR-026). The verdict
-is revised to *complete with closure addendum*. Open items — they block P2's
-implementation milestones, not its design tasks:
+was revised to *complete with closure addendum*; the addendum **closed
+2026-07-18** (PRs #11–#14). It had blocked P2's implementation milestones, not
+its design tasks:
 
 - **T16a** interim exposure containment on the legacy `/api/*` surface
   (loopback default + limits; full retirement lands with P2 T22).
