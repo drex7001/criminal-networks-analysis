@@ -157,6 +157,18 @@ git switch master && git pull
 - A red master is the top priority: fix forward or `git revert` the squash
   commit immediately.
 
+## Dependency lockfile
+
+- `uv.lock` is the committed, resolved dependency set for Aegis. CI first runs
+  `uv lock --check`, then installs with `uv sync --locked --extra dev`; a change
+  to `pyproject.toml` that is not reflected in the lockfile therefore fails CI.
+- When changing project dependencies, regenerate the lock deliberately with
+  `uv lock`, review the full lock diff, then run the normal fast suite. Never
+  hand-edit `uv.lock` or use an unlocked installer in CI.
+- Routine dependency upgrades belong in their own `chore/` PR. Record why an
+  upgrade is needed and keep the lockfile, manifest, and verification in that
+  same PR.
+
 ## Secrets & data hygiene
 
 - `.env` is gitignored and must stay untracked; only `.env.example` is
