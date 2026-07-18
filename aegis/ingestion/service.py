@@ -34,7 +34,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from aegis.actions import ActionContext, ActionService, new_id
+from aegis.actions.service import suggestion_idempotency_key
 from aegis.audit import append as append_audit
+from aegis.er.ledger import resolve_norm_key
 from aegis.evidence import EvidenceVault, ProvenanceEnvelope
 # The extraction passes still grade with the legacy tag rubric; its one
 # authoritative mapping lives in the migration adapter (ADR-016).
@@ -226,6 +228,7 @@ def run_structural_pass(
         record=record,
         result=result,
         producer="structural_pass",
+        producer_version=pattern_version,
         producer_meta=producer_meta,
         actor=actor,
         ontology=ontology,
@@ -266,9 +269,10 @@ def run_semantic_pass(
         ),
         media_type="application/json",
     )
+    prompt_sha256 = sha256(SYSTEM_PROMPT.encode()).hexdigest()
     producer_meta = {
         "model": resolved_model,
-        "prompt_sha256": sha256(SYSTEM_PROMPT.encode()).hexdigest(),
+        "prompt_sha256": prompt_sha256,
         "chunk_index": chunk_index,
         "raw_response_ref": f"sha256:{stored.content_hash}",
     }
@@ -277,28 +281,27 @@ def run_semantic_pass(
         record=record,
         result=result,
         producer="semantic_pass",
+        # Model *and* prompt: the same model behind a changed prompt is a
+        # different producer, and acceptance-rate metrics are computed per
+        # (model, prompt hash) (spec 04 §4).
+        producer_version=f"{resolved_model}+{prompt_sha256[:12]}",
         producer_meta=producer_meta,
         actor=actor,
         ontology=ontology,
     )
 
 
-def _resolve_entity(session: Session, norm_key: str) -> str | None:
-    """Current entity for a mention key, if adjudicated identity exists."""
-    return session.scalar(
-        select(IdentityMembership.entity_id)
-        .join(Mention, Mention.mention_id == IdentityMembership.mention_id)
-        .where(Mention.norm_key == norm_key, IdentityMembership.valid_to.is_(None))
-        .limit(1)
-    )
+def _suggestion_exists(session: Session, idempotency_key: str) -> bool:
+    """Replay safety (spec 04 §5): an identical draft is submitted only once.
 
-
-def _suggestion_exists(session: Session, producer: str, payload: dict[str, Any]) -> bool:
-    """Replay safety (spec 04 §5): an identical draft is submitted only once."""
+    The key is also UNIQUE in the database, so this pre-check is an ergonomic
+    skip rather than the guarantee — a race loses on the constraint, not on a
+    duplicate row.
+    """
     return (
         session.scalar(
             select(ReviewQueue.suggestion_id)
-            .where(ReviewQueue.producer == producer, ReviewQueue.payload == payload)
+            .where(ReviewQueue.idempotency_key == idempotency_key)
             .limit(1)
         )
         is not None
@@ -311,6 +314,7 @@ def _submit_result(
     record: SourceRecord,
     result: Any,  # legacy.pipeline.models.ExtractionResult
     producer: str,
+    producer_version: str,
     producer_meta: dict[str, Any],
     actor: str,
     ontology: Ontology | None = None,
@@ -321,35 +325,36 @@ def _submit_result(
     submitted: list[ReviewQueue] = []
 
     def _submit(payload: dict[str, Any], meta_extra: dict[str, Any]) -> None:
-        if _suggestion_exists(session, producer, payload):
+        key = suggestion_idempotency_key(
+            kind="claim_draft",
+            producer=producer,
+            producer_version=producer_version,
+            payload=payload,
+        )
+        if _suggestion_exists(session, key):
             return
         submitted.append(
             service.submit_suggestion(
                 context,
                 payload=payload,
+                suggestion_kind="claim_draft",
                 producer=producer,
+                producer_version=producer_version,
                 producer_meta={**producer_meta, **meta_extra},
+                record_id=record.record_id,
+                idempotency_key=key,
             )
         )
 
-    resolved: dict[str, str | None] = {}
-    for node in result.nodes:
-        resolved[node.node_id] = _resolve_entity(session, node.node_id)
-
-    for node in result.nodes:
-        if resolved[node.node_id] is not None:
-            continue  # already an adjudicated entity — nothing to propose
-        _submit(
-            {
-                "entity_type": node.node_type.value.lower(),
-                "label": node.name,
-                "aliases": node.aliases,
-                "affiliations": node.affiliations,
-                "record_id": record.record_id,
-                "excerpt": node.source_excerpt,
-            },
-            {"draft_kind": "entity", "norm_key": node.node_id},
-        )
+    # A previously unseen name is not a separate entity draft — there is no
+    # `entity_draft` kind (ADR-031 §1).  It rides in the claim draft's
+    # subject_ref/object_ref as an unresolved mention, and acceptance creates
+    # the mention and entity inside record_claim (spec 02 §3.2).  A node that
+    # appears in no edge therefore proposes nothing, which is correct: an
+    # entity with no claim about it is not knowledge.
+    resolved: dict[str, str | None] = {
+        node.node_id: resolve_norm_key(session, node.node_id) for node in result.nodes
+    }
 
     for edge in result.edges:
         relation = edge.relation
@@ -357,8 +362,8 @@ def _submit_result(
         if predicate not in ontology.predicates:
             predicate = None  # reviewer must choose; raw verb kept in meta
         credibility, verification = CONFIDENCE_TAG_GRADING[edge.confidence.value]
-        subject_id = resolved.get(edge.source) or _resolve_entity(session, edge.source)
-        object_id = resolved.get(edge.target) or _resolve_entity(session, edge.target)
+        subject_id = resolved.get(edge.source) or resolve_norm_key(session, edge.source)
+        object_id = resolved.get(edge.target) or resolve_norm_key(session, edge.target)
         needs_entity = [
             ref for ref, entity in ((edge.source, subject_id), (edge.target, object_id))
             if entity is None
@@ -382,7 +387,6 @@ def _submit_result(
         _submit(
             payload,
             {
-                "draft_kind": "claim",
                 "raw_relation": relation,
                 "subject_ref": edge.source,
                 "object_ref": edge.target,

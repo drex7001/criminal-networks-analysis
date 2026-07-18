@@ -5,7 +5,13 @@ import sqlalchemy as sa
 from sqlalchemy import CheckConstraint
 
 from aegis.store import Base
-from tests.support.schema import EXPECTED_CHECKS, ONTOLOGY_COLUMNS, T4_TABLES
+from tests.support.schema import (
+    EXPECTED_CHECKS,
+    LEDGER_CHECKS,
+    LEDGER_TABLES,
+    ONTOLOGY_COLUMNS,
+    T4_TABLES,
+)
 
 
 pytestmark = pytest.mark.requirement("Article-XI", "Article-XIV", "T4")
@@ -30,6 +36,54 @@ def test_checks_cover_only_code_owned_invariants() -> None:
     assert set(checks) == EXPECTED_CHECKS
     for sqltext in checks.values():
         assert all(column not in sqltext for column in ONTOLOGY_COLUMNS)
+
+
+@pytest.mark.requirement("Article-V", "ADR-028", "T17")
+def test_ledger_metadata_declares_its_tables_and_invariants() -> None:
+    assert LEDGER_TABLES <= set(Base.metadata.tables)
+    assert set(_metadata_checks(LEDGER_TABLES)) == LEDGER_CHECKS
+
+
+@pytest.mark.requirement("Article-V", "ADR-028", "T17")
+def test_one_active_membership_is_a_partial_unique_index() -> None:
+    """The invariant must live in the schema, not in a service method.
+
+    A uniqueness rule enforced only by application code is one forgotten call
+    site away from two active memberships, which is exactly the state that
+    makes a merge irreversible (ADR-028 §2).
+    """
+    indexes = {
+        index.name: index for index in Base.metadata.tables["identity_membership"].indexes
+    }
+    invariant = indexes["ux_membership_one_active"]
+    assert invariant.unique
+    assert [column.name for column in invariant.columns] == ["mention_id"]
+    assert "closed_revision_id is null" in str(
+        invariant.dialect_options["postgresql"]["where"]
+    ).lower()
+
+
+@pytest.mark.requirement("ADR-029", "T17")
+def test_claim_carries_its_identity_context() -> None:
+    """Anchors are nullable; the revision stamp never is (spec 02 §3.1)."""
+    claim = Base.metadata.tables["claim"]
+    assert claim.c["subject_mention_id"].nullable
+    assert claim.c["object_mention_id"].nullable
+    assert not claim.c["identity_revision_id"].nullable
+
+
+@pytest.mark.requirement("B-08", "T17")
+def test_governance_seams_are_present_and_inert() -> None:
+    """P2 stores and displays them; P7 enforces them (spec 02 §1)."""
+    seams = Base.metadata.tables["source_record"].c
+    for name in (
+        "collection_policy_ref",
+        "retention_class",
+        "authority_ref",
+        "authority_valid_from",
+        "authority_valid_to",
+    ):
+        assert seams[name].nullable, f"{name} must not be enforced in P2"
 
 
 def test_ontology_vocabulary_columns_are_plain_text() -> None:

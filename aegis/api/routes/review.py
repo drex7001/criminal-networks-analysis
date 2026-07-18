@@ -18,6 +18,7 @@ router = APIRouter(tags=["review-queue"])
 @router.get("/review-queue", response_model=list[SuggestionOut])
 def list_suggestions(
     session: DbSession,
+    kind: Annotated[str | None, Query()] = None,
     status: Annotated[str | None, Query()] = None,
     producer: Annotated[str | None, Query()] = None,
     record: Annotated[str | None, Query()] = None,
@@ -25,12 +26,16 @@ def list_suggestions(
     auth: AuthContext = Depends(authorize("analyst")),
 ) -> list[ReviewQueue]:
     query = select(ReviewQueue).order_by(ReviewQueue.created_at.desc()).limit(limit)
+    if kind is not None:
+        query = query.where(ReviewQueue.suggestion_kind == kind)
     if status is not None:
         query = query.where(ReviewQueue.status == status)
     if producer is not None:
         query = query.where(ReviewQueue.producer == producer)
     if record is not None:
-        query = query.where(ReviewQueue.payload["record_id"].astext == record)
+        # the envelope carries record_id as a column now — an indexed foreign
+        # key rather than a JSON probe into an untyped payload (ADR-031)
+        query = query.where(ReviewQueue.record_id == record)
     return list(session.scalars(query))
 
 

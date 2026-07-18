@@ -56,7 +56,9 @@ EXTRACTION_METHODS: dict[str, str] = {
 
 # Claims that describe the subject rather than connect two graph nodes; they
 # render as node properties, not edges.
-NODE_PROPERTY_PREDICATES = frozenset({"known_as", "affiliated_with", "merged_into"})
+# ``merged_into`` is gone: merge lineage is ledger metadata, not a claim
+# (ADR-028 §5), and the predicate is retired from the ontology by T17.
+NODE_PROPERTY_PREDICATES = frozenset({"known_as", "affiliated_with"})
 
 DISCLAIMER = (
     "Analytical model compiled ONLY from public reporting (Wikipedia, PCoI reporting, "
@@ -111,7 +113,7 @@ def build_graph(
         .join(Mention, Mention.mention_id == IdentityMembership.mention_id)
         .join(SourceRecord, SourceRecord.record_id == Mention.record_id)
         .join(Source, Source.source_id == SourceRecord.source_id)
-        .where(IdentityMembership.valid_to.is_(None))
+        .where(IdentityMembership.closed_revision_id.is_(None))
     ).all()
     for entity_id, norm_key, context, source_name in rows:
         mention_info.setdefault(entity_id, (norm_key, context, source_name))

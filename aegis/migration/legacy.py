@@ -17,8 +17,11 @@ Grading of migrated claims (ADR-011):
   remapped claim's credibility is capped at the weaker of the mapped value and
   ``possibly_true`` (Article III).
 
-Identity: one mention + one identity membership per legacy node, decided by
-``rule:legacy-slug`` — the deterministic slug equality the prototype used.
+Identity: one mention + one identity membership per legacy node, opened at
+ledger revision 0 with **no decision** (ADR-005, spec 05 §7).  The prototype
+resolved these by deterministic slug equality; a rule is not a decider
+(ADR-027), so rather than recording a machine as ``decided_by`` the clusters
+are *verified as* the migration baseline, which is what they actually are.
 
 Idempotency: sources and source records use deterministic ``src_legacy_*`` /
 ``rec_legacy_*`` ids; entities are found back through their mention's
@@ -41,6 +44,7 @@ from sqlalchemy.orm import Session
 
 from aegis.actions import ActionContext, ActionService, new_id
 from aegis.audit import append as append_audit
+from aegis.er.ledger import BASELINE_REVISION, open_membership
 from aegis.evidence import EvidenceVault, ProvenanceEnvelope, get_vault
 from aegis.ontology import Ontology
 from aegis.store import Claim, Entity, IdentityMembership, Mention, Source, SourceRecord
@@ -50,7 +54,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 LEGACY_SOURCE_SYSTEM = "legacy-migration"
 LEGACY_SCHEME = "legacy-confidence-tag"
 SNAPSHOT_RELPATH = Path("legacy") / "pipeline" / "real_dataset.py"
-DECIDED_BY_RULE = "rule:legacy-slug"
 
 # ConfidenceTag → (credibility_normalized, verification_status)  (spec 02 §6)
 CONFIDENCE_TAG_GRADING: dict[str, tuple[str, str]] = {
@@ -462,7 +465,7 @@ def migrate(
                 .where(
                     Mention.norm_key == node.node_id,
                     Mention.record_id == record_id,
-                    IdentityMembership.valid_to.is_(None),
+                    IdentityMembership.closed_revision_id.is_(None),
                 )
                 .limit(1)
             ).scalar_one_or_none()
@@ -487,14 +490,16 @@ def migrate(
             # on its own — flush entity + mention first (spec 02 §2 FKs).
             session.add_all([entity, mention])
             session.flush()
-            session.add(
-                IdentityMembership(
-                    membership_id=new_id("mem"),
-                    mention_id=mention.mention_id,
-                    entity_id=entity.entity_id,
-                    decided_by=DECIDED_BY_RULE,
-                    decision_note="deterministic legacy node_id slug",
-                )
+            # A legacy one-mention cluster is *verified as* the ledger baseline,
+            # not adjudicated: nobody ruled on it, so it opens at revision 0
+            # and carries no decision (spec 05 §7 step 3, ADR-005).  The old
+            # ``decided_by='rule:legacy-slug'`` marker is retired with the
+            # column — a rule is never a decider (ADR-027).
+            open_membership(
+                session,
+                mention_id=mention.mention_id,
+                entity_id=entity.entity_id,
+                revision_id=BASELINE_REVISION,
             )
             entity_by_slug[node.node_id] = entity.entity_id
             report.entities_created += 1

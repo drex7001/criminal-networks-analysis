@@ -193,8 +193,9 @@ without a rerun of the evaluation in the same PR is a defect.
 
 ## 7. Migration from Phase 1
 
-Phase 1 already ships `mention` and `identity_membership` (migration
-`0005_identity_tables.py`); they are the migration substrate, not a blocker.
+**Implemented** by `migrations/versions/0007_identity_ledger.py` (T17).
+Phase 1 already shipped `mention` and `identity_membership` (migration
+`0005_identity_tables.py`); they were the migration substrate, not a blocker.
 The T17 Alembic series:
 
 1. Creates `identity_revision` and inserts **revision 0** as the migration
@@ -211,8 +212,12 @@ The T17 Alembic series:
 5. Drops `identity_membership.decided_by`'s `rule:<name>` usage: the producer
    moves to `er_candidate.producer` and `decided_by` becomes a human actor
    reference (ADR-027).
-6. Retires the `merged_into` predicate from the ontology (a minor version bump
-   per specs/01 §4) — no rows exist, since nothing ever wrote it.
+6. Retires the `merged_into` predicate from the ontology. This is a **removal**,
+   so specs/01 §4 makes it a *major* change: ontology `0.4.0 → 1.0.0`, the
+   prior file archived as `ontology/history/aegis-0.4.0.yaml`, and the data
+   migration shipped in the same change. (An earlier draft of this section
+   called it minor; that was wrong, and the T17 PR corrected it.) No rows
+   existed, since nothing ever wrote the predicate.
 
 The migration is idempotent on re-run and reversible (`downgrade` restores the
 Phase-1 shape, losing only ledger rows that the Phase-1 shape cannot express —

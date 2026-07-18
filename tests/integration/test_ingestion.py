@@ -25,7 +25,8 @@ from aegis.ingestion import (
     run_semantic_pass,
     run_structural_pass,
 )
-from aegis.store import Claim, Entity, IdentityMembership, Mention, ReviewQueue, SourceRecord
+from aegis.er.ledger import open_membership
+from aegis.store import Claim, Entity, Mention, ReviewQueue, SourceRecord
 from tests.support.database import migrated_test_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -102,10 +103,13 @@ def test_structural_pass_lands_in_review_queue_only(session: Session, vault) -> 
     )
     assert suggestions, "the sample arrest list must produce suggestions"
     assert _claim_count(session) == claims_before  # AC: zero claims
-    claim_drafts = [s for s in suggestions if s.producer_meta["draft_kind"] == "claim"]
-    assert claim_drafts, "overlapping remand windows must propose co-location claims"
-    for suggestion in claim_drafts:
+    # Every producer emits one closed kind (ADR-031 §1); there is no
+    # entity_draft, so overlapping remand windows propose claims and nothing else.
+    assert {s.suggestion_kind for s in suggestions} == {"claim_draft"}
+    assert {s.target_action for s in suggestions} == {"record_claim"}
+    for suggestion in suggestions:
         assert suggestion.producer == "structural_pass"
+        assert suggestion.producer_version == "v1"
         assert suggestion.producer_meta["rule"] == "remand-overlap"
         # the adapter maps the pass verb onto the ontology predicate
         assert suggestion.payload["predicate"] == "co_located_in_prison_with"
@@ -130,16 +134,22 @@ def test_semantic_pass_creates_zero_claims_n_suggestions(session: Session, vault
     suggestions = run_semantic_pass(
         session, vault, record=landing.record, text=text, actor="user:test", mock=True
     )
-    # mock extraction: 4 nodes + 4 edges → 8 suggestions
-    assert len(suggestions) == 8
+    # Mock extraction finds 4 nodes and 4 edges, and proposes 4 suggestions:
+    # an unseen name is not a separate draft, it rides in the claim's
+    # subject_ref/object_ref as an unresolved mention (ADR-031 §1, spec 02 §3.2).
+    assert len(suggestions) == 4
     assert _claim_count(session) == claims_before  # AC: zero rows in claim
     assert (
         session.scalar(select(func.count()).select_from(ReviewQueue))
-        == queue_before + 8
+        == queue_before + 4
     )
     for suggestion in suggestions:
         meta = suggestion.producer_meta
         assert suggestion.producer == "semantic_pass"
+        assert suggestion.suggestion_kind == "claim_draft"
+        # a changed prompt is a different producer, even behind the same model
+        assert suggestion.producer_version.startswith("mock+")
+        assert suggestion.record_id == landing.record.record_id
         assert meta["model"] == "mock"
         assert len(meta["prompt_sha256"]) == 64
         assert meta["raw_response_ref"].startswith("sha256:")
@@ -197,7 +207,7 @@ def test_reviewer_edits_resolve_and_accept_a_suggestion(session: Session, vault)
         note="resolved entities; met_in_prison → co_located_in_prison_with",
     )
     assert decided.status == "accepted"
-    claim = session.get(Claim, decided.result_claim)
+    claim = session.get(Claim, decided.result_claim_id)
     assert claim is not None
     assert claim.predicate == "co_located_in_prison_with"
     assert claim.record_id == landing.record.record_id
@@ -226,30 +236,19 @@ def test_known_entities_resolve_instead_of_drafting(session: Session, vault) -> 
     )
     session.add_all([entity, mention])
     session.flush()
-    session.add(
-        IdentityMembership(
-            membership_id=new_id("mem"),
-            mention_id=mention.mention_id,
-            entity_id=entity.entity_id,
-            decided_by="user:test",
-            decision_note="T9 test adjudication",
-        )
+    open_membership(
+        session, mention_id=mention.mention_id, entity_id=entity.entity_id
     )
-    session.flush()
     text = B_REPORT.read_text(encoding="utf-8")
     suggestions = run_semantic_pass(
         session, vault, record=landing.record, text=text, actor="user:test", mock=True
     )
-    entity_drafts = {
-        s.producer_meta["norm_key"]
-        for s in suggestions
-        if s.producer_meta["draft_kind"] == "entity"
-    }
-    assert "kasun_wijeratne" not in entity_drafts  # resolved, not re-proposed
     claim_drafts = [
         s
         for s in suggestions
         if s.producer_meta.get("raw_relation") == "met_in_prison"
     ]
+    # the adjudicated mention resolves to its entity; the other side stays
+    # unresolved and is flagged rather than dropped (Article VIII)
     assert claim_drafts[0].payload["subject_id"] == entity.entity_id
     assert claim_drafts[0].producer_meta["needs_entity"] == ["rizvi_farook"]

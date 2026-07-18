@@ -11,10 +11,15 @@ from alembic import command
 from alembic.config import Config
 from aegis.store import Base
 from tests.support.paths import REPO_ROOT
-from tests.support.schema import EXPECTED_CHECKS, ONTOLOGY_COLUMNS, T4_TABLES
+from tests.support.schema import (
+    EXPECTED_CHECKS,
+    LEDGER_TABLES,
+    ONTOLOGY_COLUMNS,
+    T4_TABLES,
+)
 
 
-pytestmark = pytest.mark.requirement("Article-XI", "Article-XIV", "T4")
+pytestmark = pytest.mark.requirement("Article-XI", "Article-XIV", "ADR-028", "T4", "T17")
 
 
 @pytest.mark.integration
@@ -47,13 +52,27 @@ def test_postgres_migration_up_inspect_down_clean(
             assert all(column not in sqltext for column in ONTOLOGY_COLUMNS)
 
         # The migration and ORM mappings must not drift apart.
-        for table_name in T4_TABLES:
+        for table_name in T4_TABLES | LEDGER_TABLES:
             actual = {column["name"] for column in inspector.get_columns(table_name)}
             mapped = set(Base.metadata.tables[table_name].c.keys())
             assert actual == mapped
 
+        # The T17 ledger comes up with its baseline and its invariant in place.
+        assert LEDGER_TABLES <= set(inspector.get_table_names())
+        with engine.connect() as connection:
+            assert connection.execute(
+                sa.text("SELECT count(*) FROM identity_revision WHERE revision_id = 0")
+            ).scalar_one() == 1
+        assert "ux_membership_one_active" in {
+            index["name"] for index in inspector.get_indexes("identity_membership")
+        }
+
+        # Down through 0007 and back is clean: the ledger drops without
+        # stranding the Phase-1 shape it was layered onto.
         command.downgrade(alembic_config, "0001")
-        assert T4_TABLES.isdisjoint(sa.inspect(engine).get_table_names())
+        remaining = set(sa.inspect(engine).get_table_names())
+        assert T4_TABLES.isdisjoint(remaining)
+        assert LEDGER_TABLES.isdisjoint(remaining)
     finally:
         # Leave a developer/CI test database at head even if an assertion fails.
         command.upgrade(alembic_config, "head")

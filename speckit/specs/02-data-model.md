@@ -6,7 +6,9 @@ arguments) and §7 (traversal projection) rewritten 2026-07-18 by T17b under
 ADR-029 (mention anchors + identity-revision resolution) and ADR-030 (honest
 aggregation); §3.2 (review queue) rewritten 2026-07-18 by T17c under ADR-031
 (typed suggestion envelope). Where this text conflicts with those ADRs,
-the ADRs win.** · Constitutional basis: Articles I, III, IV, V, VIII, X, XIII
+the ADRs win.** · **§1 seams, §2, §3, §3.2 and §8 are implemented by migration
+`0007_identity_ledger.py` (T17). §7 is still the Phase-1 view — T21 replaces
+it.** · Constitutional basis: Articles I, III, IV, V, VIII, X, XIII
 
 DDL below is illustrative Postgres 16; Alembic migrations are authoritative. IDs are
 ULIDs with type prefixes (`ent_`, `clm_`, `src_`, `rec_`, `evd_`, `cas_`) — sortable,

@@ -120,14 +120,23 @@ class SuggestionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     suggestion_id: str
+    suggestion_kind: str
+    schema_version: int
     payload: dict[str, Any]
+    target_action: str
     producer: str
+    producer_version: str
     producer_meta: dict[str, Any]
+    record_id: str | None
+    case_id: str | None
     status: str
     decided_by: str | None
     decided_at: datetime | None
     decision_note: str | None
-    result_claim: str | None
+    # exactly one is set on acceptance, per kind (ADR-031 §2)
+    result_claim_id: str | None
+    result_decision_id: str | None
+    result_relation: dict[str, Any] | None
     created_at: datetime
 
 

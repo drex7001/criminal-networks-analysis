@@ -22,7 +22,11 @@ from aegis.projections import (
     refresh_edge_projection,
 )
 from tests.support.paths import ONTOLOGY_PATH, REPO_ROOT, SNAPSHOT_ROOT
-from tests.support.database import migrated_test_engine
+from tests.support.database import (
+    RESTORE_BASELINE_REVISION,
+    TRUNCATE_DOMAIN_TABLES,
+    migrated_test_engine,
+)
 
 BASELINE = SNAPSHOT_ROOT / "real_graph.baseline.json"
 pytestmark = pytest.mark.requirement("Article-XIII", "T10")
@@ -42,13 +46,8 @@ def baseline() -> dict:
 def projection_engine(test_database_url: str, alembic_config: Config) -> sa.Engine:
     with migrated_test_engine(test_database_url, alembic_config) as engine:
         with engine.begin() as connection:
-            connection.execute(
-                sa.text(
-                    "TRUNCATE claim_relation, review_queue, claim, identity_membership, "
-                    "mention, evidence_item, custody_event, derivative, source_record, "
-                    "source, case_member, case_file, entity, authz_outbox CASCADE"
-                )
-            )
+            connection.execute(sa.text(TRUNCATE_DOMAIN_TABLES))
+            connection.execute(sa.text(RESTORE_BASELINE_REVISION))
         yield engine
 
 

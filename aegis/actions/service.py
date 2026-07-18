@@ -10,16 +10,18 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-import secrets
-import time
+from hashlib import sha256
+import json
 from pathlib import Path
 from typing import Any, Iterator, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from aegis.actions.ids import new_id
 from aegis.audit import append as append_audit
 from aegis.config import get_settings
+from aegis.er.ledger import active_entity_for_mention, active_revision_id
 from aegis.ontology import KNOWN_ROLES, Ontology, OntologyError, load
 from aegis.store import (
     AuthzOutbox,
@@ -30,6 +32,7 @@ from aegis.store import (
     CustodyEvent,
     Entity,
     EvidenceItem,
+    Mention,
     ReviewQueue,
     SourceRecord,
 )
@@ -42,8 +45,37 @@ CASE_MEMBER_RELATIONS = {
     "supervisor": "supervisor",
     "auditor": "auditor_grant",
 }
-_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: ``suggestion_kind`` is a **closed, code-owned** list (ADR-031 §1) — not
+#: ontology vocabulary — because each kind is a dispatch branch here.  Adding a
+#: kind is a schema + mapping change, never a queue migration.
+SUGGESTION_KINDS: dict[str, str] = {
+    "claim_draft": "record_claim",
+    "identity_candidate": "adjudicate_identity",
+    "claim_relation": "link_claims",
+}
+SUGGESTION_SCHEMA_VERSION = 1
+
+
+def suggestion_idempotency_key(
+    *,
+    kind: str,
+    producer: str,
+    producer_version: str,
+    payload: dict[str, Any],
+) -> str:
+    """Stable digest of what a producer proposed (spec 02 §3.2, spec 04 §5).
+
+    Re-running an extraction pass replays the same inputs, so it computes the
+    same key and the UNIQUE constraint stops the replay from re-suggesting
+    anything already decided.  Only the *proposal* is digested — never the
+    reviewer's edits, which arrive after the key is fixed.
+    """
+    digest = json.dumps(payload, sort_keys=True, default=str)
+    return sha256(
+        f"{kind}|{producer}|{producer_version}|{digest}".encode()
+    ).hexdigest()
 
 
 class ActionValidationError(ValueError):
@@ -65,16 +97,6 @@ class ActionContext:
     def __post_init__(self) -> None:
         if not self.actor.strip():
             raise ValueError("action actor must not be empty")
-
-
-def new_id(prefix: str) -> str:
-    """Generate a prefixed ULID without adding a runtime dependency."""
-    value = (int(time.time() * 1000) << 80) | int.from_bytes(secrets.token_bytes(10), "big")
-    encoded = ""
-    for _ in range(26):
-        encoded = _CROCKFORD[value & 31] + encoded
-        value >>= 5
-    return f"{prefix}_{encoded}"
 
 
 def _default_ontology() -> Ontology:
@@ -191,6 +213,8 @@ class ActionService:
         jurisdiction: str | None = None,
         location_text: str | None = None,
         supersedes: str | None = None,
+        subject_mention_id: str | None = None,
+        object_mention_id: str | None = None,
     ) -> Claim:
         try:
             predicate_spec = self.ontology.predicate(predicate)
@@ -258,6 +282,8 @@ class ActionService:
             raise ActionValidationError(
                 "claim.supersedes", f"claim {supersedes!r} does not exist"
             )
+        self._check_anchor("subject", subject_mention_id, subject_id)
+        self._check_anchor("object", object_mention_id, object_id)
 
         row = Claim(
             claim_id=claim_id or new_id("clm"),
@@ -283,11 +309,46 @@ class ActionService:
             jurisdiction=jurisdiction,
             location_text=location_text,
             supersedes=supersedes,
+            subject_mention_id=subject_mention_id,
+            object_mention_id=object_mention_id,
+            # What identity meant when the claim was made (ADR-029 §2).  A
+            # record, not a resolution instruction: projections resolve through
+            # the *active* revision, and only an as-of query pins this one.
+            identity_revision_id=active_revision_id(self.session),
             ontology_version=self.ontology.version,
         )
         self.session.add(row)
         self.session.flush()
         return row
+
+    def _check_anchor(
+        self, role: Literal["subject", "object"], mention_id: str | None, entity_id: str | None
+    ) -> None:
+        """A mention anchor must be real and must not contradict its argument.
+
+        The DB enforces "no object anchor without an object entity"; what it
+        cannot express is that an anchor already adjudicated onto *another*
+        entity makes the claim's own attribution incoherent (spec 02 §3.1).
+        An anchor on a mention nobody has ruled on yet is fine — that is the
+        normal state of freshly extracted text.
+        """
+        if mention_id is None:
+            return
+        if entity_id is None:
+            raise ActionValidationError(
+                f"claim.{role}_mention_id",
+                f"cannot anchor a {role} that is not an entity argument",
+            )
+        if self.session.get(Mention, mention_id) is None:
+            raise ActionValidationError(
+                f"claim.{role}_mention_id", f"mention {mention_id!r} does not exist"
+            )
+        owner = active_entity_for_mention(self.session, mention_id)
+        if owner is not None and owner != entity_id:
+            raise ActionValidationError(
+                f"claim.{role}_mention_id",
+                f"mention {mention_id!r} belongs to entity {owner!r}, not {entity_id!r}",
+            )
 
     def record_claim(self, context: ActionContext, **claim: Any) -> Claim:
         self._require_action("record_claim")
@@ -396,18 +457,48 @@ class ActionService:
         payload: dict[str, Any],
         producer: str,
         producer_meta: dict[str, Any],
+        suggestion_kind: str = "claim_draft",
+        producer_version: str = "unversioned",
+        record_id: str | None = None,
+        case_id: str | None = None,
+        idempotency_key: str | None = None,
+        supersedes: str | None = None,
+        expires_at: datetime | None = None,
         suggestion_id: str | None = None,
     ) -> ReviewQueue:
         self._require_action("submit_suggestion")
-        self._validate_suggestion_payload(payload)
+        if suggestion_kind not in SUGGESTION_KINDS:
+            raise ActionValidationError(
+                f"review_queue.suggestion_kind.{suggestion_kind}",
+                f"not a known kind (expected one of {sorted(SUGGESTION_KINDS)})",
+            )
+        if suggestion_kind == "claim_draft":
+            self._validate_suggestion_payload(payload)
         if not producer.strip():
             raise ActionValidationError("review_queue.producer", "must not be empty")
+        if not producer_version.strip():
+            raise ActionValidationError("review_queue.producer_version", "must not be empty")
         with self._transaction():
             row = ReviewQueue(
                 suggestion_id=suggestion_id or new_id("sug"),
+                suggestion_kind=suggestion_kind,
+                schema_version=SUGGESTION_SCHEMA_VERSION,
                 payload=payload,
+                target_action=SUGGESTION_KINDS[suggestion_kind],
                 producer=producer,
+                producer_version=producer_version,
                 producer_meta=producer_meta,
+                record_id=record_id if record_id is not None else payload.get("record_id"),
+                case_id=case_id if case_id is not None else payload.get("case_id"),
+                idempotency_key=idempotency_key
+                or suggestion_idempotency_key(
+                    kind=suggestion_kind,
+                    producer=producer,
+                    producer_version=producer_version,
+                    payload=payload,
+                ),
+                supersedes=supersedes,
+                expires_at=expires_at,
             )
             self.session.add(row)
             self.session.flush()
@@ -416,7 +507,11 @@ class ActionService:
                 action="submit_suggestion",
                 resource_type="review_queue",
                 resource_id=row.suggestion_id,
-                detail={"producer": producer},
+                detail={
+                    "producer": producer,
+                    "producer_version": producer_version,
+                    "suggestion_kind": suggestion_kind,
+                },
             )
         return row
 
@@ -442,9 +537,14 @@ class ActionService:
         note: str | None = None,
         edits: dict[str, Any] | None = None,
     ) -> ReviewQueue:
-        """Decide a suggestion.  ``edits`` lets the reviewer amend any claim
-        field before acceptance (spec 04 §4); the accepted draft — edits
-        included — is what gets validated, recorded, and kept on the row.
+        """Decide a suggestion.  ``edits`` lets the reviewer amend any field
+        before acceptance (spec 04 §4); the accepted draft — edits included —
+        is what gets validated, recorded, and kept on the row.
+
+        Acceptance **dispatches through the kind's declared action** with the
+        reviewer as actor (ADR-031 §2); this method never writes a canonical
+        table itself.  That is what makes Article VII's "only a human-executed
+        action writes canon" mechanically checkable per kind.
         """
         self._require_action("review_suggestion")
         if decision not in {"accepted", "rejected"}:
@@ -463,37 +563,93 @@ class ActionService:
                 )
             if row.status != "suggested":
                 raise ActionValidationError("review_queue.status", "suggestion is already decided")
-            result: Claim | None = None
+            detail: dict[str, Any] = {
+                "decision": decision,
+                "suggestion_kind": row.suggestion_kind,
+                "target_action": row.target_action,
+                "edited_fields": sorted(edits) if edits else [],
+            }
+            case_id: str | None = None
             if decision == "accepted":
                 draft = {**row.payload, **(edits or {})}
-                self._validate_suggestion_payload(draft)
-                try:
-                    result = self._create_claim(**self._coerce_claim_payload(draft))
-                except TypeError as exc:
-                    raise ActionValidationError(
-                        "review_queue.payload", f"invalid claim draft: {exc}"
-                    ) from exc
+                case_id = self._dispatch_acceptance(context, row, draft)
                 if edits:
                     row.payload = draft
+                detail["result_claim_id"] = row.result_claim_id
+                detail["result_decision"] = row.result_decision_id
+                detail["result_relation"] = row.result_relation
             row.status = decision
             row.decided_by = context.actor
             row.decided_at = _utcnow()
             row.decision_note = note
-            row.result_claim = result.claim_id if result is not None else None
             self.session.flush()
             self._audit(
                 context,
                 action="review_suggestion",
                 resource_type="review_queue",
                 resource_id=suggestion_id,
-                case_id=result.case_id if result is not None else None,
-                detail={
-                    "decision": decision,
-                    "result_claim": row.result_claim,
-                    "edited_fields": sorted(edits) if edits else [],
-                },
+                case_id=case_id,
+                detail=detail,
             )
         return row
+
+    def _dispatch_acceptance(
+        self, context: ActionContext, row: ReviewQueue, draft: dict[str, Any]
+    ) -> str | None:
+        """Run the accepted draft through ``row.target_action``.
+
+        Returns the case the result belongs to, for the audit row.  Each branch
+        sets exactly one typed result column — the DB enforces that count.
+        """
+        if row.suggestion_kind == "claim_draft":
+            self._validate_suggestion_payload(draft)
+            try:
+                claim = self._create_claim(**self._coerce_claim_payload(draft))
+            except TypeError as exc:
+                raise ActionValidationError(
+                    "review_queue.payload", f"invalid claim draft: {exc}"
+                ) from exc
+            row.result_claim_id = claim.claim_id
+            return claim.case_id
+        if row.suggestion_kind == "claim_relation":
+            try:
+                relation = ClaimRelation(
+                    from_claim=draft["from_claim"],
+                    to_claim=draft["to_claim"],
+                    relation=draft["relation"],
+                    created_by=context.actor,
+                )
+            except KeyError as exc:
+                raise ActionValidationError(
+                    "review_queue.payload", f"claim_relation draft is missing {exc}"
+                ) from exc
+            if relation.relation not in CLAIM_RELATIONS:
+                raise ActionValidationError(
+                    f"claim_relation.relation.{relation.relation}",
+                    f"not supported (expected one of {sorted(CLAIM_RELATIONS)})",
+                )
+            for field in ("from_claim", "to_claim"):
+                if self.session.get(Claim, getattr(relation, field)) is None:
+                    raise ActionValidationError(
+                        f"claim_relation.{field}", "claim does not exist"
+                    )
+            self.session.add(relation)
+            self.session.flush()
+            row.result_relation = {
+                "from_claim": relation.from_claim,
+                "to_claim": relation.to_claim,
+                "relation": relation.relation,
+            }
+            return None
+        # identity_candidate dispatches to adjudicate_identity, which lands in
+        # T20 with the ledger write and the scoped concurrency check.  Nothing
+        # produces this kind yet (T18/T19 do), so this is an unreachable
+        # branch guarding against a producer arriving before its consumer.
+        raise ActionValidationError(
+            f"review_queue.suggestion_kind.{row.suggestion_kind}",
+            f"acceptance dispatches to {row.target_action!r}, which is not "
+            "implemented until T20",
+        )
 
     def register_evidence(
         self,

@@ -79,6 +79,11 @@ tests; seam columns in the T18 migration plan.
 
 ## Milestone B — Identity core
 
+T17 ships as two PRs, matching the two halves of its title: the **ledger
+migration** (schema, baseline, envelope, seams) and then **mention extraction
+& backfill** (offsets/script/language, entity folding, claim anchors). The
+migration must land first because the extraction writes into its columns.
+
 **T17. ⛓ Ledger migration + mention extraction & backfill** (specs/05 §1–2) —
 implement the T17a/T17b/T17c/T17d schemas in one Alembic series; populate
 `mention` rows (raw_text, norm_key, offsets, language/script when known —
@@ -88,6 +93,16 @@ identity-revision stamps.
 AC: migrations up/down clean; every entity has ≥ 1 mention; one-active-
 membership invariant enforced by the DB; idempotent re-run; Phase-1 tests
 green on the new schema.
+
+*Ledger-migration half landed* (`0007_identity_ledger.py`). Decisions taken
+while implementing: the T17d governance seams ship here rather than in T24a,
+since T17 owns the single Alembic series and T24a then has nothing to migrate;
+retiring `merged_into` is a **major** ontology change under specs/01 §4
+(`0.4.0 → 1.0.0`, prior file archived), not the minor bump specs/05 §7 first
+said; `new_id` moved to `aegis/actions/ids.py` to break the import cycle
+`actions → er.ledger → actions`; `identity_candidate` acceptance raises an
+error naming T20 rather than silently accepting, because a kind no code path
+can accept is the exact Phase-1 defect ADR-031 exists to remove.
 
 **T18. Deterministic ER → pre-verified candidates** (specs/05 §2.1, ADR-027) —
 rule engine emitting **candidates** (never merges) for exact registry
