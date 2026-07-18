@@ -25,7 +25,7 @@ external-review disposition (`reviews/2026-07-18-external-review-disposition.md`
   ship earlier.
 
 ```
-Milestone I    Governed foundation      P0 governance ▸ P1 claim store + RBAC     [COMPLETE — closure addendum open]
+Milestone I    Governed foundation      P0 governance ▸ P1 claim store + RBAC     [COMPLETE]
 Milestone II   MVP                      P2 identity, provenance & workspace       ★ MVP
 Milestone III  Ontology platform        P3 modules & contracts ▸ P4 workspace v2 & object views
 Milestone IV   Intelligence domain      P5 events, geo & time ▸ P6 search, object sets & analytics
@@ -57,7 +57,7 @@ Article VII).
 
 ---
 
-## Milestone I — Governed foundation *(complete; closure addendum open)*
+## Milestone I — Governed foundation *(complete)*
 
 ### Phase 0 — Governance before code *(GOAL.md §40 M-I · this spec kit)*
 
@@ -78,7 +78,7 @@ writes, deferral language — were resolved by ADR-025…027 rather than reopeni
 P0; the constitution-conformance check is now part of every phase's exit
 review.)*
 
-### Phase 1 — Claim store, evidence vault, RBAC, audit *(effort: L · COMPLETE with closure addendum)*
+### Phase 1 — Claim store, evidence vault, RBAC, audit *(effort: L · COMPLETE)*
 
 Delivered T1–T16: governed Postgres claim store, content-addressed evidence
 vault, Keycloak OIDC + OpenFGA ReBAC + row filters, hash-chained audit,
@@ -94,16 +94,18 @@ backup/restore drill. See `tasks/phase-01.md` and
       ones never appear.
 - [x] Postgres + vault restore drill executed successfully once.
 
-**Closure addendum (T16a–T16d — blocks P2 implementation milestones, not P2
-design tasks):**
-- [ ] T16a: interim exposure containment — loopback-default bind + response
-      limits on the legacy `/api/*` surface (full retirement lands with P2 T22,
-      ADR-026).
-- [ ] T16b: FGA revocation inline best-effort delete + documented staleness
-      bound (finishes ADR-014's specified behavior).
-- [ ] T16c: dependency lockfile + CI pinning (supply-chain minimum, H-33).
-- [ ] T16d: documentation honesty pass — statuses, README claims, legacy-only
-      runbooks moved under `legacy/` with warnings (B-15/M-01/M-25).
+**Closure addendum (T16a–T16d) — CLOSED 2026-07-18.** It blocked P2's
+implementation milestones, not its design tasks; all four landed before
+Milestone A completed, so nothing in P2 is gated on it now.
+- [x] T16a: interim exposure containment — loopback-default bind + response
+      limits on the legacy `/api/*` surface (PR #11; full retirement lands with
+      P2 T22, ADR-026).
+- [x] T16b: FGA revocation inline best-effort delete + documented staleness
+      bound (PR #12 — finishes ADR-014's specified behavior).
+- [x] T16c: dependency lockfile + CI pinning (PR #13 — supply-chain minimum,
+      H-33).
+- [x] T16d: documentation honesty pass — statuses, README claims, legacy-only
+      runbooks moved under `legacy/` with warnings (PR #14 — B-15/M-01/M-25).
 
 ---
 

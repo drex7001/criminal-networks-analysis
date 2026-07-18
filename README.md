@@ -27,9 +27,10 @@ The core principle:
 
 ## What exists today
 
-**Milestone I (Phases 0–1) is complete, with a closure addendum open**
-(T16a–T16d — see `speckit/tasks/phase-01.md`; verdict revised 2026-07-18 per
-ADR-033). The governed foundation:
+**Milestone I (Phases 0–1) is complete**, including the ADR-033 closure
+addendum (T16a–T16d, closed 2026-07-18 — see `speckit/tasks/phase-01.md`).
+Phase 2 is underway: its blocking design pack (T17a–T17d) is done and
+Milestone B is the active work. The governed foundation:
 
 - **Claim store** (PostgreSQL + PostGIS): every relationship and attribute is a
   claim with source, grading, time window, and handling code — never a bare fact.

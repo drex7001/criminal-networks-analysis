@@ -3,9 +3,9 @@
 Ordered; each task lists acceptance criteria (AC). Tasks marked ⛓ block everything
 after them. Reference specs in parentheses.
 
-> **Status: COMPLETE with closure addendum.** T1–T16 all delivered (Milestones
-> A–E); Milestone F (T16a–T16d, added 2026-07-18 per ADR-033) is open and blocks
-> Phase 2's implementation milestones (not its design tasks). See
+> **Status: COMPLETE.** T1–T16 all delivered (Milestones A–E); Milestone F
+> (T16a–T16d, added 2026-07-18 per ADR-033) closed the same day via PRs #11–#14,
+> so Phase 2 is no longer gated on it. See
 > `../reviews/phase-01-exit-review.md` for the exit-criteria walkthrough and ADR-017…019 in
 > `decisions.md` for decisions changed during implementation. Divergences from the
 > original task text: the identity tables (`mention`, `identity_membership`) shipped
@@ -121,9 +121,10 @@ non-blocking deliverables carried over with owner + target phase recorded.
 *(Executed 2026-07-17 under the old deferral language; verdict revised
 2026-07-18 — see the closure addendum below.)*
 
-## Milestone F — Closure addendum (added 2026-07-18, ADR-033)
+## Milestone F — Closure addendum (added 2026-07-18, ADR-033) — **CLOSED 2026-07-18**
 
-Blocks Phase 2 Milestones B–D (implementation); Phase 2 Milestone A (design
+All four delivered: T16a (PR #11), T16b (PR #12), T16c (PR #13), T16d (PR #14).
+Blocked Phase 2 Milestones B–D (implementation); Phase 2 Milestone A (design
 pack) may run in parallel.
 
 **T16a. Interim exposure containment** (ADR-026 §2) — `aegis serve` binds to
