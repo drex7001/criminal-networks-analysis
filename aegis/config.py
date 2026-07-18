@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     keycloak_realm: str = Field(default="aegis", validation_alias="KEYCLOAK_REALM")
     api_audience: str = Field(default="aegis-api", validation_alias="AEGIS_API_AUDIENCE")
 
+    legacy_api_max_response_bytes: int = Field(
+        default=5 * 1024 * 1024,
+        ge=1024,
+        validation_alias="AEGIS_LEGACY_API_MAX_RESPONSE_BYTES",
+    )
+    legacy_api_rate_limit_per_minute: int = Field(
+        default=60,
+        ge=1,
+        validation_alias="AEGIS_LEGACY_API_RATE_LIMIT_PER_MINUTE",
+    )
+
     minio_endpoint: str = Field(default="localhost:9000", validation_alias="MINIO_ENDPOINT")
     minio_access_key: str = Field(default="aegis", validation_alias="MINIO_ROOT_USER")
     minio_secret_key: str = Field(default="aegis-minio-dev", validation_alias="MINIO_ROOT_PASSWORD")
