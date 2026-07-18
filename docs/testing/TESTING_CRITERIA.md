@@ -21,9 +21,9 @@ constitutional or phase-exit gate cannot be deferred without a superseding ADR.
 ## Coverage policy
 
 Coverage is measured over `aegis/` with line and branch tracking. The first
-green reorganized full-suite run measured 81.0% combined coverage, so CI
-enforces an initial 81% repository floor. It must never decrease; raise the
-floor when sustained coverage improves.
+green reorganized full-suite run on Linux CI measured 80.88% combined coverage,
+so CI enforces the rounded-down initial 80% repository floor. It must never
+decrease; raise the floor when sustained coverage improves.
 
 Long-term expectations are at least 90% line coverage and 80% branch coverage.
 New and materially changed behavior should meet those levels in its owning

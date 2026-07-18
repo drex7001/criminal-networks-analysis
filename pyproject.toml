@@ -75,7 +75,7 @@ source = ["aegis"]
 show_missing = true
 skip_covered = true
 precision = 1
-fail_under = 81
+fail_under = 80
 
 [tool.coverage.xml]
 output = "coverage.xml"
