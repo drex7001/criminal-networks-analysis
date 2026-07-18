@@ -27,14 +27,19 @@ The core principle:
 
 ## What exists today
 
-**Milestone I (Phases 0–1) is complete** — the governed foundation:
+**Milestone I (Phases 0–1) is complete, with a closure addendum open**
+(T16a–T16d — see `speckit/tasks/phase-01.md`; verdict revised 2026-07-18 per
+ADR-033). The governed foundation:
 
 - **Claim store** (PostgreSQL + PostGIS): every relationship and attribute is a
   claim with source, grading, time window, and handling code — never a bare fact.
 - **Evidence vault** (MinIO): content-addressed originals, hash ledger,
   derivative tracking (Article IV).
 - **AuthN/AuthZ**: Keycloak OIDC + OpenFGA ReBAC + handling-code row filters;
-  every API route carries an authorization dependency (Article VI).
+  every `/v1/*` route carries an authorization dependency (Article VI). One
+  known exception remains: the legacy explorer's read-only `/api/*` projection
+  surface, contained by T16a and **deleted at Phase 2 T22** (ADR-026 — no
+  anonymous routes).
 - **Audit**: append-only, hash-chained event log with chain verification
   (Article X).
 - **Governed extraction**: the LLM/structural extraction passes emit *suggested
@@ -44,10 +49,13 @@ The core principle:
   the legacy explorer UI.
 - **API v1 + `aegis` CLI**, migrations, backup/restore runbook.
 
-**Active phase: Phase 2 — the ★ MVP gate** (identity resolution, provenance
-panels, review-queue UI, basic search; see
+**Active phase: Phase 2 — the ★ MVP gate** (identity decision ledger, durable
+React workspace with the full ingest → review → adjudicate → graph loop,
+provenance panels, basic search; recomposed 2026-07-18 per ADR-025…033 — see
 [`speckit/tasks/phase-02.md`](speckit/tasks/phase-02.md)). The full roadmap to
-production is [`speckit/roadmap.md`](speckit/roadmap.md).
+production is [`speckit/roadmap.md`](speckit/roadmap.md); the external-review
+disposition is
+[`speckit/reviews/2026-07-18-external-review-disposition.md`](speckit/reviews/2026-07-18-external-review-disposition.md).
 
 ## Quickstart
 
@@ -77,7 +85,7 @@ make lint-ontology     # aegis ontology validate — the Article XI gate
 | `ontology/` | **The domain artifact** (`aegis.yaml`) everything derives from (Article XI), plus change proposals and version history (Phase 3) |
 | `aegis/` | Platform core package — domain-neutral (Article XIV): ontology loader/codegen, actions, queries, authz, audit, store, evidence, ingestion, ER, projections, API, plus scaffolded homes for functions (P3), search/analytics (P6), sharing (P7), and controlled AI (P8) |
 | `sdk/` | Generated Python + TypeScript clients (Phase 3, spec 08) — committed codegen output, never hand-edited |
-| `ui/` | React + TypeScript investigation workspace (Phase 4) — replaces the legacy explorer |
+| `ui/` | React + TypeScript investigation workspace (Phase 2, ADR-032) — the single durable UI; replaces the legacy explorer at T22 |
 | `migrations/` | Alembic schema migrations |
 | `infra/` | Compose stack + bootstrap (PostgreSQL/PostGIS, MinIO, Keycloak, OpenFGA) |
 | `tests/` | Unit + integration suites (CI runs both) |
@@ -104,7 +112,8 @@ Multiplex Graph"*: a regex + LLM extraction pipeline and a Cytoscape.js
 explorer over a static graph JSON. Per **ADR-023 it is replaced, never
 extended**: it is quarantined under [`legacy/`](legacy/README.md) and runs
 only as scaffolding (the explorer is served by `aegis serve` from a
-rebuildable projection) until the Phase 4 workspace deletes it. Its
+rebuildable projection, loopback-bound per T16a) until the Phase 2 workspace
+deletes it at T22 (ADR-026/ADR-032). Its
 documentation is kept for reference:
 [`legacy/ARCHITECTURE.md`](legacy/ARCHITECTURE.md) (component tour) ·
 [`docs/RUNNING.md`](docs/RUNNING.md) (commands) ·

@@ -7,11 +7,11 @@ One modular Python application + off-the-shelf platform services, per GOAL.md §
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  UI                                                             │
-│  Phase 1: existing Cytoscape explorer (unchanged, reads         │
-│           projection JSON)                                      │
-│  Phase 4+: React+TS workspace (ontology-driven screens,        │
-│           Sigma.js/Cytoscape graph, MapLibre map, timeline)     │
+│  UI (ADR-032: one durable app from Phase 2)                     │
+│  Phase 2+: React+TS workspace (auth shell, ingest/review/       │
+│           adjudication, Cytoscape graph + provenance panel)     │
+│  Phase 4+: same app grows object views, cases, hypotheses,      │
+│           timeline; P5 adds MapLibre map                        │
 └──────────────────────────────┬─────────────────────────────────┘
                                │ OIDC (Keycloak)
 ┌──────────────────────────────▼─────────────────────────────────┐
@@ -92,10 +92,10 @@ Aegis/
 │   ├── assist/                 # controlled AI producers — suggest-only (P8, Article VII)
 │   ├── migration/              # one-time legacy adapters (T8) — only place legacy vocab lives (ADR-016)
 │   └── api/                    # FastAPI routers (thin; call actions/queries)
-├── sdk/                        # generated typed clients (P3, spec 08 §8) — committed codegen
-│   ├── python/                 # aegis_sdk package
-│   └── ts/                     # npm workspace, consumed by ui/
-├── ui/                         # React+TS investigation workspace (P4, spec 07)
+├── sdk/                        # generated typed clients — committed codegen
+│   ├── python/                 # aegis_sdk package (P8 — first consumer, ADR-033)
+│   └── ts/                     # OpenAPI-generated client (P3, spec 08 §8), consumed by ui/
+├── ui/                         # React+TS investigation workspace (P2, ADR-032, spec 07)
 ├── infra/
 │   ├── docker-compose.yml      # postgres+postgis, minio, keycloak, openfga
 │   └── fga/model.fga           # authorization model
@@ -109,7 +109,7 @@ Aegis/
 ├── tests/
 └── legacy/                     # quarantined pre-Aegis prototype (ADR-023/ADR-024)
     ├── pipeline/               # extraction passes — still feed the review queue
-    └── app/                    # explorer UI — served until the P4 workspace deletes it
+    └── app/                    # explorer UI — deleted at P2 T22 (ADR-026/ADR-032)
 ```
 
 `legacy/pipeline/` keeps working throughout — Phase 1 changed its **sink** (Postgres
@@ -147,10 +147,12 @@ acceptance the human picks the correct assertion type.
 4. Decision (+purpose) written to audit either way.
 
 ### 4.4 Projection rebuild (Article XIII)
-`aegis projections rebuild` recomputes: `edge_projection` materialized view
-(recorded claims, grouped subject/predicate/object with corroboration counts and
-confidence bands), `output/real_graph.json` (exact legacy shape so the current UI is
-untouched), optional Cypher/Neo4j push, and search vectors.
+`aegis projections rebuild` recomputes: `edge_projection` (v2 semantics per
+ADR-029/030 — identity-revision resolution, time-segmented aggregation,
+support summary, revision/version stamps), the workspace graph JSON, optional
+Cypher/Neo4j push, and search vectors. The legacy-shaped
+`output/real_graph.json` emitter survives only until P2 T22 deletes the
+explorer it feeds.
 
 ### 4.5 Audit chain (Article X)
 `audit_log(entry_hash = sha256(prev_hash || canonical_json(event)))`; verification
