@@ -25,7 +25,7 @@ from aegis.ingestion import (
     run_semantic_pass,
     run_structural_pass,
 )
-from aegis.er.ledger import open_membership
+from aegis.er.ledger import active_entity_for_mention, open_membership
 from aegis.store import Claim, Entity, Mention, ReviewQueue, SourceRecord
 from tests.support.database import migrated_test_engine
 
@@ -214,6 +214,17 @@ def test_reviewer_edits_resolve_and_accept_a_suggestion(session: Session, vault)
     assert claim.credibility_scheme == "legacy-confidence-tag"
     assert claim.location_text == "Welikada Prison"
     assert claim.valid_from is not None and claim.valid_to is not None
+    # The draft carried mention anchors from extraction, so the accepted claim
+    # can point at the text each argument was read from (ADR-029), and the
+    # anchored mentions are now attached to the entities the reviewer chose.
+    assert claim.subject_mention_id is not None
+    assert claim.object_mention_id is not None
+    for mention_id, entity_id in (
+        (claim.subject_mention_id, claim.subject_id),
+        (claim.object_mention_id, claim.object_id),
+    ):
+        assert session.get(Mention, mention_id).record_id == landing.record.record_id
+        assert active_entity_for_mention(session, mention_id) == entity_id
 
 
 @pytest.mark.integration

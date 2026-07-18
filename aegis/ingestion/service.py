@@ -37,6 +37,7 @@ from aegis.actions import ActionContext, ActionService, new_id
 from aegis.actions.service import suggestion_idempotency_key
 from aegis.audit import append as append_audit
 from aegis.er.ledger import resolve_norm_key
+from aegis.er.mentions import extract_mentions
 from aegis.evidence import EvidenceVault, ProvenanceEnvelope
 # The extraction passes still grade with the legacy tag rubric; its one
 # authoritative mapping lives in the migration adapter (ADR-016).
@@ -226,6 +227,7 @@ def run_structural_pass(
     return _submit_result(
         session,
         record=record,
+        text=text,
         result=result,
         producer="structural_pass",
         producer_version=pattern_version,
@@ -279,6 +281,7 @@ def run_semantic_pass(
     return _submit_result(
         session,
         record=record,
+        text=text,
         result=result,
         producer="semantic_pass",
         # Model *and* prompt: the same model behind a changed prompt is a
@@ -312,6 +315,7 @@ def _submit_result(
     session: Session,
     *,
     record: SourceRecord,
+    text: str,
     result: Any,  # legacy.pipeline.models.ExtractionResult
     producer: str,
     producer_version: str,
@@ -346,14 +350,32 @@ def _submit_result(
             )
         )
 
+    # Mentions are persisted here, before any adjudication: a mention records
+    # what the text says, so it is evidence, not canon (aegis.er.mentions).
+    # ER needs them to exist before anything is accepted — that is the whole
+    # point of proposing merges over extracted names.
+    extraction = extract_mentions(
+        session,
+        record=record,
+        text=text,
+        names={node.node_id: node.name for node in result.nodes},
+    )
+    mention_by_key = extraction.by_ref
+
     # A previously unseen name is not a separate entity draft — there is no
-    # `entity_draft` kind (ADR-031 §1).  It rides in the claim draft's
-    # subject_ref/object_ref as an unresolved mention, and acceptance creates
-    # the mention and entity inside record_claim (spec 02 §3.2).  A node that
-    # appears in no edge therefore proposes nothing, which is correct: an
-    # entity with no claim about it is not knowledge.
+    # `entity_draft` kind (ADR-031 §1).  It rides in the claim draft as its
+    # mention anchor, and acceptance creates the entity from that mention
+    # inside record_claim (spec 02 §3.2).  A node appearing in no edge
+    # therefore proposes no claim, which is correct: an entity with no claim
+    # about it is not knowledge.
     resolved: dict[str, str | None] = {
         node.node_id: resolve_norm_key(session, node.node_id) for node in result.nodes
+    }
+    # The pass labelled each node; that label becomes the *proposed* type for
+    # an entity created on acceptance.  The reviewer can edit it, and a
+    # predicate that allows only one type ignores it anyway.
+    node_types: dict[str, str] = {
+        node.node_id: node.node_type.value.lower() for node in result.nodes
     }
 
     for edge in result.edges:
@@ -364,6 +386,8 @@ def _submit_result(
         credibility, verification = CONFIDENCE_TAG_GRADING[edge.confidence.value]
         subject_id = resolved.get(edge.source) or resolve_norm_key(session, edge.source)
         object_id = resolved.get(edge.target) or resolve_norm_key(session, edge.target)
+        subject_mention = mention_by_key.get(edge.source)
+        object_mention = mention_by_key.get(edge.target)
         needs_entity = [
             ref for ref, entity in ((edge.source, subject_id), (edge.target, object_id))
             if entity is None
@@ -372,6 +396,14 @@ def _submit_result(
             "subject_id": subject_id,
             "predicate": predicate,
             "object_id": object_id,
+            # The anchor is what makes an unresolved argument acceptable: on
+            # acceptance record_claim creates the entity from this mention
+            # (spec 02 §3.2).  An argument with neither an entity nor an
+            # anchor is one the reviewer must resolve by hand.
+            "subject_mention_id": subject_mention.mention_id if subject_mention else None,
+            "object_mention_id": object_mention.mention_id if object_mention else None,
+            "subject_entity_type": node_types.get(edge.source),
+            "object_entity_type": node_types.get(edge.target),
             "record_id": record.record_id,
             "assertion_type": "reported",
             "collection_method": COLLECTION_METHODS[edge.extraction_method.value],
@@ -392,6 +424,9 @@ def _submit_result(
                 "object_ref": edge.target,
                 # unmatched references are flagged, never dropped (Article VIII)
                 "needs_entity": needs_entity,
+                # names the pass reported but that are absent from the text it
+                # read — the reviewer sees them; ER never blocks on them
+                "unverified_names": extraction.unverified,
             },
         )
 

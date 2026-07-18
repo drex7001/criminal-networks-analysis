@@ -20,12 +20,16 @@ ingest_app = typer.Typer(
     help="Raw landing + extraction passes (spec 04)", no_args_is_help=True
 )
 authz_app = typer.Typer(help="OpenFGA projection tools (ADR-014)", no_args_is_help=True)
+identity_app = typer.Typer(
+    help="Identity ledger maintenance (spec 05)", no_args_is_help=True
+)
 app.add_typer(db_app, name="db")
 app.add_typer(ontology_app, name="ontology")
 app.add_typer(audit_app, name="audit")
 app.add_typer(projections_app, name="projections")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(authz_app, name="authz")
+app.add_typer(identity_app, name="identity")
 
 
 @app.callback()
@@ -275,6 +279,44 @@ def authz_rebuild() -> None:
         f"{report.superseded_outbox_rows} outbox row(s) superseded",
         fg=typer.colors.GREEN,
     )
+
+
+@identity_app.command("backfill-anchors")
+def identity_backfill_anchors(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be anchored without writing."
+    ),
+) -> None:
+    """Anchor pre-T17 claims to their mentions where the evidence is unambiguous.
+
+    Heuristic and lossy by construction — Phase-1 claims never recorded the
+    mention they came from (spec 02 §3.1).  Ambiguous claims are reported and
+    left unanchored rather than guessed.  Safe to re-run.
+    """
+    from aegis.er.backfill import backfill_anchors
+    from aegis.store import get_sessionmaker
+
+    with get_sessionmaker()() as session:
+        report = backfill_anchors(session)
+        if dry_run:
+            session.rollback()
+        else:
+            session.commit()
+    typer.secho(
+        f"{'would anchor' if dry_run else 'anchored'} {report.anchored} of "
+        f"{report.considered} unanchored claims",
+        fg=typer.colors.GREEN,
+    )
+    typer.echo(
+        f"  left unanchored: {report.left_unanchored} "
+        f"({report.ambiguous} ambiguous, {report.unmatched} with no mention in record)"
+    )
+    if report.ambiguous_claims:
+        typer.echo("  ambiguous sample: " + ", ".join(report.to_dict()["ambiguous_sample"]))
+        typer.echo(
+            "  these follow the re-adjudication path on a split, by design "
+            "(spec 02 §3.1 rule 4)"
+        )
 
 
 @ingest_app.command("land")

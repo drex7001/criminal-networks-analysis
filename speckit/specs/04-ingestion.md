@@ -80,9 +80,16 @@ audited actions.
   model governance later).
 - The pass proposes claims with predicate, grading *suggestion* (mapped from the
   legacy tag rubric), time window, and excerpt. A previously unseen name is **not**
-  a separate entity draft: it rides in the claim's `subject_ref`/`object_ref` as an
-  unresolved mention, and `record_claim` creates the mention and entity on
-  acceptance (specs/02 §3.2 — there is no `entity_draft` kind).
+  a separate entity draft: the pass persists a `mention` for it and the claim draft
+  carries that mention as its anchor, so `record_claim` creates the **entity** on
+  acceptance (specs/02 §3.2 — there is no `entity_draft` kind). The draft also
+  carries the node type the pass labelled, as the *proposed* entity type; where
+  the predicate allows more than one type and no proposal arrives, acceptance
+  fails rather than guessing whether a name is a person or an organization.
+- Names the pass reported but could not locate in the text it read are listed in
+  `producer_meta.unverified_names`. They still become mentions — dropping them
+  would lose the extractor's output (Article VIII) — but with NULL offsets, so a
+  fabricated name is visibly unanchored to any position in the source.
 - The reviewer can edit any field before accepting; the edited payload is stored and
   acceptance dispatches through the declared `target_action`, which validates against
   the ontology, writes, and audits (ADR-031 §2). The queue never writes tables itself.
