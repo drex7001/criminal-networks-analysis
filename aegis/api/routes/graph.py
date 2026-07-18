@@ -1,10 +1,9 @@
 """Legacy-compatible projection surface (spec 06 Projections; plan §4.4, T14).
 
 The existing single-page UI fetches these unversioned ``/api/*`` routes with no
-bearer token, so they are deliberately **public** — and safe to be, because
-they serve only the open-handling, case-less projection (the public OSINT
-floor).  Anything above ``open`` never enters ``output/real_graph.json`` (the
-emitter forces ``open_only``), so there is nothing here to leak.
+bearer token.  ADR-026 schedules their deletion at P2 T22; until then T16a
+contains the exposure with loopback-default serving, per-client rate limits,
+and a hard response-size cap.  These controls are not authorization.
 
 The routes read the committed projection file, exactly as the retired
 ``app/server.py`` did, so the UI's data source and shapes are unchanged.  Run
@@ -17,12 +16,15 @@ from collections import defaultdict
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Request, Response
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from aegis.api.deps import public_route
+from aegis.config import get_settings
 
 router = APIRouter(tags=["projections"])
+limiter = Limiter(key_func=get_remote_address)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _GRAPH_PATH = _REPO_ROOT / "output" / "real_graph.json"
@@ -37,15 +39,37 @@ def _load_graph() -> dict:
     return json.loads(_GRAPH_PATH.read_text(encoding="utf-8"))
 
 
+def _legacy_rate_limit() -> str:
+    return f"{get_settings().legacy_api_rate_limit_per_minute}/minute"
+
+
+def _limited_json(content: object) -> Response:
+    body = json.dumps(
+        content,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    limit = get_settings().legacy_api_max_response_bytes
+    if len(body) > limit:
+        raise HTTPException(
+            413,
+            f"legacy API response exceeds the configured {limit}-byte cap",
+        )
+    return Response(content=body, media_type="application/json")
+
+
 @router.get("/api/graph")
+@limiter.limit(_legacy_rate_limit)
 @public_route
-def api_graph() -> JSONResponse:
-    return JSONResponse(_load_graph())
+def api_graph(request: Request) -> Response:
+    return _limited_json(_load_graph())
 
 
 @router.get("/api/stats")
+@limiter.limit(_legacy_rate_limit)
 @public_route
-def api_stats() -> dict:
+def api_stats(request: Request) -> Response:
     graph = _load_graph()
     by_layer: dict[str, int] = defaultdict(int)
     by_conf: dict[str, int] = defaultdict(int)
@@ -55,26 +79,30 @@ def api_stats() -> dict:
     by_type: dict[str, int] = defaultdict(int)
     for node in graph["nodes"]:
         by_type[node.get("node_type", "PERSON")] += 1
-    return {
-        "nodes": len(graph["nodes"]),
-        "edges": len(graph["edges"]),
-        "cells": len(graph.get("cells", [])),
-        "by_layer": dict(by_layer),
-        "by_confidence": dict(by_conf),
-        "by_node_type": dict(by_type),
-        "generated_at": graph.get("generated_at"),
-    }
+    return _limited_json(
+        {
+            "nodes": len(graph["nodes"]),
+            "edges": len(graph["edges"]),
+            "cells": len(graph.get("cells", [])),
+            "by_layer": dict(by_layer),
+            "by_confidence": dict(by_conf),
+            "by_node_type": dict(by_type),
+            "generated_at": graph.get("generated_at"),
+        }
+    )
 
 
 @router.get("/api/cells")
+@limiter.limit(_legacy_rate_limit)
 @public_route
-def api_cells() -> list[dict]:
-    return _load_graph().get("cells", [])
+def api_cells(request: Request) -> Response:
+    return _limited_json(_load_graph().get("cells", []))
 
 
 @router.get("/api/query/{name}")
+@limiter.limit(_legacy_rate_limit)
 @public_route
-def api_query(name: str) -> dict:
+def api_query(name: str, request: Request) -> Response:
     graph = _load_graph()
     names = {n["node_id"]: n["name"] for n in graph["nodes"]}
     edges = graph["edges"]
@@ -90,7 +118,7 @@ def api_query(name: str) -> dict:
             if len(ls) >= 2
         ]
         rows.sort(key=lambda r: (-r["layer_count"], r["name"]))
-        return {"query": name, "rows": rows}
+        return _limited_json({"query": name, "rows": rows})
 
     if name in ("ambiguous", "hard_facts", "ongoing"):
         if name == "ambiguous":
@@ -113,6 +141,6 @@ def api_query(name: str) -> dict:
             }
             for e in selected
         ]
-        return {"query": name, "count": len(rows), "rows": rows}
+        return _limited_json({"query": name, "count": len(rows), "rows": rows})
 
     raise HTTPException(404, f"unknown query {name!r}")

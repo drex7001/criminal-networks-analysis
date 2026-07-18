@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 
 import typer
@@ -121,8 +122,38 @@ def serve(
     host: str = typer.Option("127.0.0.1", help="Bind address."),
     port: int = typer.Option(8000, help="Port."),
     reload: bool = typer.Option(False, "--reload", help="Auto-reload (dev)."),
+    allow_non_loopback: bool = typer.Option(
+        False,
+        "--allow-non-loopback",
+        help="Explicitly allow a non-loopback bind (unsafe before the pilot gate).",
+    ),
 ) -> None:
     """Run the governed API + mounted legacy UI (T13/T14)."""
+    normalized_host = host.strip().lower().strip("[]")
+    try:
+        loopback = ipaddress.ip_address(normalized_host).is_loopback
+    except ValueError:
+        loopback = normalized_host == "localhost"
+    if not loopback and not allow_non_loopback:
+        raise typer.BadParameter(
+            "non-loopback binds are refused by default; pass "
+            "--allow-non-loopback only after applying the pilot security gate",
+            param_hint="--host",
+        )
+    if not loopback:
+        import structlog
+
+        structlog.get_logger(__name__).warning(
+            "non_loopback_bind_enabled",
+            host=host,
+            warning="legacy /api/* routes remain anonymous until P2 T22",
+        )
+        typer.secho(
+            "WARNING: non-loopback bind explicitly enabled while legacy /api/* "
+            "routes remain anonymous (ADR-026).",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
     import uvicorn
 
     typer.secho(f"aegis API on http://{host}:{port}  (docs at /docs)", fg=typer.colors.GREEN)
