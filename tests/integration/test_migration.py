@@ -16,9 +16,21 @@ from aegis.audit import verify
 from aegis.evidence import LocalFilesystemVault
 from aegis.migration import migrate
 from aegis.ontology import load
-from aegis.store import Claim, Entity, IdentityMembership, Mention, Source, SourceRecord
+from aegis.store import (
+    Claim,
+    Entity,
+    IdentityDecision,
+    IdentityMembership,
+    Mention,
+    Source,
+    SourceRecord,
+)
 from tests.support.paths import REPO_ROOT, SNAPSHOT_ROOT
-from tests.support.database import migrated_test_engine
+from tests.support.database import (
+    RESTORE_BASELINE_REVISION,
+    TRUNCATE_DOMAIN_TABLES,
+    migrated_test_engine,
+)
 
 BASELINE = SNAPSHOT_ROOT / "real_graph.baseline.json"
 pytestmark = pytest.mark.requirement("Article-XIII", "T8")
@@ -40,13 +52,8 @@ def migration_engine(test_database_url: str, alembic_config: Config) -> sa.Engin
         # Deterministic migration ids require empty domain tables. Keep the
         # append-only audit chain intact and verify it below.
         with engine.begin() as connection:
-            connection.execute(
-                sa.text(
-                    "TRUNCATE claim_relation, review_queue, claim, identity_membership, "
-                    "mention, evidence_item, custody_event, derivative, source_record, "
-                    "source, case_member, case_file, entity, authz_outbox CASCADE"
-                )
-            )
+            connection.execute(sa.text(TRUNCATE_DOMAIN_TABLES))
+            connection.execute(sa.text(RESTORE_BASELINE_REVISION))
         yield engine
 
 
@@ -101,14 +108,33 @@ def test_migrated_store_contents(migrated, baseline_graph) -> None:
         assert session.scalar(select(func.count()).select_from(Source)) == 12
         assert session.scalar(select(func.count()).select_from(SourceRecord)) == 12
         assert session.scalar(select(func.count()).select_from(Mention)) == 41
+        # Legacy one-mention clusters are *verified as* the ledger baseline,
+        # not adjudicated: they open at revision 0 and never close, and no
+        # decision is invented for them (spec 05 §7 step 3, ADR-005).  The old
+        # `decided_by='rule:legacy-slug'` marker went with the column — a rule
+        # is never a decider (ADR-027).
         assert (
             session.scalar(
                 select(func.count())
                 .select_from(IdentityMembership)
-                .where(IdentityMembership.decided_by == "rule:legacy-slug")
+                .where(
+                    IdentityMembership.opened_revision_id == 0,
+                    IdentityMembership.closed_revision_id.is_(None),
+                )
             )
             == 41
         )
+        assert session.scalar(select(func.count()).select_from(IdentityDecision)) == 0
+        # Every entity is reachable from at least one mention (spec 05 §1): an
+        # entity nobody ever wrote down in a source record is not knowledge.
+        orphans = session.scalars(
+            select(Entity.entity_id)
+            .outerjoin(
+                IdentityMembership, IdentityMembership.entity_id == Entity.entity_id
+            )
+            .where(IdentityMembership.membership_id.is_(None))
+        ).all()
+        assert orphans == []
         # one content-addressed snapshot backs every record (same bytes → one hash)
         hashes = set(session.scalars(select(SourceRecord.content_hash)))
         assert len(hashes) == 1

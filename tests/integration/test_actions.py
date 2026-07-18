@@ -214,8 +214,10 @@ def test_submit_and_review_suggestion(seeded: dict[str, object]) -> None:
     )
     service.session.commit()
     assert decided.status == "accepted"
-    assert decided.result_claim is not None
-    assert service.session.get(Claim, decided.result_claim) is not None
+    assert decided.suggestion_kind == "claim_draft"
+    assert decided.target_action == "record_claim"
+    assert decided.result_claim_id is not None
+    assert service.session.get(Claim, decided.result_claim_id) is not None
 
     rejected = service.submit_suggestion(
         context, payload=payload, producer="structural_pass", producer_meta={"rule": "test"}
@@ -225,7 +227,7 @@ def test_submit_and_review_suggestion(seeded: dict[str, object]) -> None:
         context, suggestion_id=rejected.suggestion_id, decision="rejected"
     )
     service.session.commit()
-    assert rejected.result_claim is None
+    assert rejected.result_claim_id is None
 
 
 @pytest.mark.integration

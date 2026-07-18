@@ -10,12 +10,7 @@
 #   · no credibility words like "suspected_" (grading carries the doubt)
 # Dataset-specific verb mappings live in the migration adapter, not here.
 
-version: 1.0.0   # major: `merged_into` removed (T17, ADR-028 §5) — merge lineage
-                 # is ledger metadata, not a claim, because a claim requires a
-                 # source record (Article I) and administrative metadata has
-                 # none.  Migration 0007 ships with the removal and the prior
-                 # version is archived in ontology/history/aegis-0.4.0.yaml
-                 # (spec 01 §4).  No rows existed: nothing ever wrote it.
+version: 0.4.0   # minor: additive remove_case_member action (T16b, ADR-014)
 namespace: aegis.lk
 
 # Ordered low → high; index = clearance level required (spec 03).
@@ -102,10 +97,9 @@ predicates:
   # entity when one exists, else the affiliation text is kept as a literal
   # (spec 02 §6 — migration + extraction both need the fallback).
   affiliated_with:     {subject: [person], object: [organization, literal], category: ideological}
-  # `merged_into` lived here until v1.0.0.  Retired by ADR-028 §5: merge
-  # lineage is reconstructed from identity_decision and the membership rows it
-  # closed and opened, so representing it as a claim would have required
-  # inventing a source record for it.
+  merged_into:         {subject: [person, organization, vehicle, phone_number, location],
+                        object: [person, organization, vehicle, phone_number, location],
+                        category: kinship, system: true}   # written only by adjudication actions
   assessed_as_criminal_organization:
                        {subject: [organization], object: literal, category: ideological}
 

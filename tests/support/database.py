@@ -41,14 +41,31 @@ def migrated_test_engine(database_url: str, config: Config) -> Iterator[sa.Engin
             engine.dispose()
 
 
+#: Revision 0 is migration state, not test data (spec 05 §7).  ``CASCADE``
+#: reaches it anyway — ``mention`` and ``er_candidate`` are referenced by
+#: ``er_candidate`` → ``identity_decision`` → ``identity_revision`` — so the
+#: ledger baseline is re-asserted after the wipe rather than excluded from it.
+#: Restoring it is also more robust than an exclusion list, which every future
+#: foreign key into the ledger would silently invalidate.
+RESTORE_BASELINE_REVISION = (
+    "INSERT INTO identity_revision (revision_id, decision_id) VALUES (0, NULL) "
+    "ON CONFLICT DO NOTHING"
+)
+
+#: Everything except ``audit_log``, whose chain some suites verify across a
+#: reset.  Callers that want the audit chain cleared name it themselves.
+TRUNCATE_DOMAIN_TABLES = (
+    "TRUNCATE claim_relation, review_queue, claim, entity_canonical_map, "
+    "identity_negative_constraint, er_candidate, identity_decision, "
+    "identity_revision, identity_membership, mention, evidence_item, "
+    "custody_event, derivative, source_record, source, case_member, case_file, "
+    "entity, authz_outbox CASCADE"
+)
+
+
 def truncate_domain_data(engine: sa.Engine) -> None:
-    """Clear mutable Phase 1 state for cross-session API isolation."""
+    """Reset mutable domain state to the migration baseline."""
     with engine.begin() as connection:
-        connection.execute(
-            sa.text(
-                "TRUNCATE audit_log, claim_relation, review_queue, claim, "
-                "identity_membership, mention, evidence_item, custody_event, "
-                "derivative, source_record, source, case_member, case_file, "
-                "entity, authz_outbox CASCADE"
-            )
-        )
+        connection.execute(sa.text("TRUNCATE audit_log CASCADE"))
+        connection.execute(sa.text(TRUNCATE_DOMAIN_TABLES))
+        connection.execute(sa.text(RESTORE_BASELINE_REVISION))
