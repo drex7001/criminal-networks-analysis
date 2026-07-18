@@ -165,6 +165,20 @@ AC: merge → intervening claim edits → split restores mention-attributable
 state exactly; a decision against a stale revision is rejected and
 re-presented; every decision carries a human actor + note in audit.
 
+**COMPLETE** (`aegis/er/adjudication.py`, `aegis/er/canonical.py`,
+`ActionService.adjudicate_identity`). All seven reversal cases of specs/05 §8
+are green. Decisions taken: split re-adjudication queues a **`claim_draft`**
+carrying `supersedes`, not the `claim_relation` kind specs/02 §3.1 originally
+named — `link_claims` records corroborates/contradicts and cannot express
+"this claim belongs to the other entity", while a draft can and satisfies
+rule 5 by construction; specs/02 §3.1 is corrected accordingly. The ontology's
+`roles` and `dual_control_for` are now enforced at the write via
+`ActionContext.roles` / `second_actor`, closing the gap specs/05 §3.4 named.
+A split that moves every mention is refused as a rename. The canonical map is
+rebuilt by replaying decisions in revision order rather than reading current
+memberships — only the replay stays deterministic when a merged entity's
+mentions are later scattered across a split.
+
 ## Milestone C — Workspace & governed UI loop
 
 **T21. ⛓ Projection rebuild v2 + "why connected?" API** (ADR-029, ADR-030;
