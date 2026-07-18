@@ -6,12 +6,17 @@ import asyncio
 from contextlib import suppress
 import time
 
+import pytest
+
 from aegis.authz.fga import FGAError
 from aegis.authz.outbox import (
     SyncReport,
     delete_inline_best_effort,
     dispatch_forever,
 )
+
+
+pytestmark = pytest.mark.requirement("Article-VI", "ADR-014", "T16b")
 
 
 class _FakeFGA:
