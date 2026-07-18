@@ -282,6 +282,30 @@ analyst-authored and assessment claims legitimately have no textual mention.
    `claim.object_id` are immutable after write. This is the property the
    reversal tests assert (specs/05 §8).
 
+**Where mentions come from (T17 refinement).** Extraction *persists* mentions,
+before any adjudication: a mention records what the text says, so it is
+evidence, not canon — and ER cannot propose merges over extracted names if the
+names only exist once a claim is accepted. Acceptance then creates the
+**entity** for a mention nobody has ruled on, and opens its membership at the
+current revision (§3.2). So "the draft names an unresolved mention" means it
+carries a `mention_id`, and the entity is what acceptance creates.
+
+Two consequences the corpus forced, recorded because they look like sloppiness
+and are not:
+
+- **Offsets are populated only when the name is verifiably a contiguous span.**
+  The real text writes `Kasun "Podda" WIJERATNE` where an extractor reports
+  `Kasun Wijeratne`. The name is plainly present but is not a span, so the
+  mention is created with **NULL offsets** and listed as unverified for the
+  reviewer. Locating is case-insensitive exact match only — an offset found by
+  fuzzy alignment would assert the source says something at a position where it
+  does not.
+- **`mention.language` is left NULL** by extraction. There is no language
+  detector in P2, and Latin script does not imply English in this corpus —
+  romanized Sinhala and Tamil names are Latin too. `script` is decidable and is
+  populated; language waits for a detector rather than being guessed. T19's
+  transliteration features key off `script`.
+
 The backfill for Phase-1 claims is **heuristic and lossy**: existing rows record
 only `record_id`, never the mention that produced them, so T17 matches
 `mention.norm_key` within the claim's own record. Where the heuristic is

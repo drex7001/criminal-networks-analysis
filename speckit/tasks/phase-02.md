@@ -94,6 +94,16 @@ AC: migrations up/down clean; every entity has ≥ 1 mention; one-active-
 membership invariant enforced by the DB; idempotent re-run; Phase-1 tests
 green on the new schema.
 
+**COMPLETE.** *Mention-extraction half landed*: extraction persists mentions
+(with offsets where the name is verifiably a span, and ISO 15924 script),
+`aegis.er.normalize.norm_key` replaces the prototype's `slugify` — which folded
+every Sinhala and Tamil name to the literal `"unknown"`, so all of them shared
+one blocking key — entity creation folds into `claim_draft` acceptance, the
+ADR-029 anchor requirement is enforced in the actions layer, legacy claims are
+anchored where their mention is in the claim's own record, and
+`aegis identity backfill-anchors` handles the rest heuristically, reporting
+what it left unanchored.
+
 *Ledger-migration half landed* (`0007_identity_ledger.py`). Decisions taken
 while implementing: the T17d governance seams ship here rather than in T24a,
 since T17 owns the single Alembic series and T24a then has nothing to migrate;

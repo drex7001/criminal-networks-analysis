@@ -135,6 +135,23 @@ def test_migrated_store_contents(migrated, baseline_graph) -> None:
             .where(IdentityMembership.membership_id.is_(None))
         ).all()
         assert orphans == []
+        # Claims drawn from the record their subject was named in carry that
+        # mention as an anchor (ADR-029); a claim citing a different
+        # publication has no mention there and stays unanchored by design,
+        # following the re-adjudication path on a split rather than pointing
+        # at text it was not drawn from (spec 02 §3.1 rule 4).
+        anchored = session.scalar(
+            select(func.count())
+            .select_from(Claim)
+            .where(Claim.subject_mention_id.isnot(None))
+        )
+        assert anchored > 0
+        for claim in session.scalars(
+            select(Claim).where(Claim.subject_mention_id.isnot(None)).limit(50)
+        ):
+            mention = session.get(Mention, claim.subject_mention_id)
+            assert mention.record_id == claim.record_id
+
         # one content-addressed snapshot backs every record (same bytes → one hash)
         hashes = set(session.scalars(select(SourceRecord.content_hash)))
         assert len(hashes) == 1

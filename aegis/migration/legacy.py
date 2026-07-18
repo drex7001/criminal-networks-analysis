@@ -135,6 +135,19 @@ EXPECTED_CATEGORY_CORRECTIONS: dict[str, frozenset[str]] = {
 COLLECTION_METHODS = {"CURATED": "curated", "STRUCTURAL": "structural", "SEMANTIC": "semantic_llm"}
 
 
+def _anchor(mention: Mention | None, record_id: str) -> str | None:
+    """The mention id, but only when it is text in *this* claim's record.
+
+    A legacy node carries one mention in one record.  An edge cited from a
+    different publication has no mention there, so it stays unanchored and
+    follows the re-adjudication path on a split (spec 02 §3.1 rule 4) rather
+    than pointing at text the claim was not drawn from.
+    """
+    if mention is None or mention.record_id != record_id:
+        return None
+    return mention.mention_id
+
+
 def weaker_credibility(ontology: Ontology, a: str, b: str) -> str:
     """The weaker of two normalized credibility values (later in the declared
     strongest→weakest scale)."""
@@ -456,10 +469,14 @@ def migrate(
 
         # 2. Entities — one mention + one membership per legacy node.
         entity_by_slug: dict[str, str] = {}
+        # The mention each node was read from, so claims can be anchored to it
+        # (ADR-029).  A legacy node has exactly one mention, in one record, so
+        # an anchor is only correct for claims drawn from *that* record.
+        mention_by_slug: dict[str, Mention] = {}
         for node in network.nodes:
             record_id = record_for(node.source_file, f"node {node.node_id}")
             existing = session.execute(
-                select(Entity)
+                select(Entity, Mention)
                 .join(IdentityMembership, IdentityMembership.entity_id == Entity.entity_id)
                 .join(Mention, Mention.mention_id == IdentityMembership.mention_id)
                 .where(
@@ -468,9 +485,11 @@ def migrate(
                     IdentityMembership.closed_revision_id.is_(None),
                 )
                 .limit(1)
-            ).scalar_one_or_none()
+            ).one_or_none()
             if existing is not None:
-                entity_by_slug[node.node_id] = existing.entity_id
+                entity, mention = existing
+                entity_by_slug[node.node_id] = entity.entity_id
+                mention_by_slug[node.node_id] = mention
                 report.entities_existing += 1
                 continue
             entity = Entity(
@@ -502,6 +521,7 @@ def migrate(
                 revision_id=BASELINE_REVISION,
             )
             entity_by_slug[node.node_id] = entity.entity_id
+            mention_by_slug[node.node_id] = mention
             report.entities_created += 1
         report.mentions = report.entities_created + report.entities_existing
         session.flush()
@@ -528,6 +548,7 @@ def migrate(
                     predicate="known_as",
                     object_value=alias,
                     record_id=record_id,
+                    subject_mention_id=_anchor(mention_by_slug.get(node.node_id), record_id),
                     assertion_type="reported",
                     collection_method=COLLECTION_METHODS["CURATED"],
                     credibility_normalized=ALIAS_GRADING[0],
@@ -555,6 +576,7 @@ def migrate(
                     subject_id=subject_id,
                     predicate="affiliated_with",
                     record_id=record_id,
+                    subject_mention_id=_anchor(mention_by_slug.get(node.node_id), record_id),
                     assertion_type="reported",
                     collection_method=COLLECTION_METHODS["CURATED"],
                     credibility_normalized=AFFILIATION_GRADING[0],
@@ -594,6 +616,8 @@ def migrate(
                     predicate=draft["predicate"],
                     object_id=object_id,
                     record_id=record_id,
+                    subject_mention_id=_anchor(mention_by_slug.get(edge.source), record_id),
+                    object_mention_id=_anchor(mention_by_slug.get(edge.target), record_id),
                     assertion_type="reported",
                     collection_method=COLLECTION_METHODS[edge.extraction_method.value],
                     credibility_scheme=LEGACY_SCHEME,

@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from hashlib import sha256
 import json
 from pathlib import Path
-from typing import Any, Iterator, Literal
+from typing import Any, Iterator, Literal, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,7 +21,11 @@ from sqlalchemy.orm import Session
 from aegis.actions.ids import new_id
 from aegis.audit import append as append_audit
 from aegis.config import get_settings
-from aegis.er.ledger import active_entity_for_mention, active_revision_id
+from aegis.er.ledger import (
+    active_entity_for_mention,
+    active_revision_id,
+    open_membership,
+)
 from aegis.ontology import KNOWN_ROLES, Ontology, OntologyError, load
 from aegis.store import (
     AuthzOutbox,
@@ -38,6 +42,12 @@ from aegis.store import (
 )
 
 ASSERTION_TYPES = frozenset({"observed", "reported", "inferred", "assessed"})
+#: Claims that assert what a *source* said must be able to point at the words
+#: (ADR-029 §1); inferred and assessed claims are the analyst's own reasoning.
+ANCHOR_REQUIRED_ASSERTIONS = frozenset({"observed", "reported"})
+#: ...unless a human entered the claim directly, in which case they are the
+#: adjudicator and no extractor recorded an offset for them (spec 04 §1).
+ANCHOR_EXEMPT_COLLECTION_METHODS = frozenset({"curated", "manual", None})
 CLAIM_RELATIONS = frozenset({"corroborates", "contradicts"})
 CASE_MEMBER_RELATIONS = {
     "analyst": "analyst",
@@ -190,10 +200,13 @@ class ActionService:
     def _create_claim(
         self,
         *,
-        subject_id: str,
         predicate: str,
         record_id: str,
         assertion_type: str,
+        # Optional because a draft may name its subject by *mention* instead:
+        # entity creation folds into acceptance (spec 02 §3.2).  Exactly one of
+        # the two must arrive, which is checked below.
+        subject_id: str | None = None,
         object_id: str | None = None,
         object_value: Any | None = None,
         claim_id: str | None = None,
@@ -215,6 +228,11 @@ class ActionService:
         supersedes: str | None = None,
         subject_mention_id: str | None = None,
         object_mention_id: str | None = None,
+        # Proposed type for an entity created from a mention.  The producer
+        # knows it (an extractor labelled the node); the reviewer can edit it
+        # before accepting.  Ignored when the argument is an existing entity.
+        subject_entity_type: str | None = None,
+        object_entity_type: str | None = None,
     ) -> Claim:
         try:
             predicate_spec = self.ontology.predicate(predicate)
@@ -222,6 +240,25 @@ class ActionService:
             raise ActionValidationError(
                 f"predicates.{predicate}", "not declared in ontology"
             ) from exc
+
+        # Entity creation folds into acceptance (spec 02 §3.2): an argument
+        # given as a mention rather than an entity is resolved — or, when the
+        # mention has never been adjudicated, an entity is created for it here,
+        # in this transaction.  There is no entity_draft kind precisely so that
+        # a new entity always arrives attached to a claim about it.
+        subject_id = subject_id or self._entity_from_mention(
+            subject_mention_id,
+            "claim.subject_id",
+            predicate_spec.subject,
+            subject_entity_type,
+        )
+        if object_id is None and object_value is None and object_mention_id is not None:
+            object_id = self._entity_from_mention(
+                object_mention_id,
+                "claim.object_id",
+                predicate_spec.entity_object_types,
+                object_entity_type,
+            )
 
         subject = self._entity(subject_id, "claim.subject_id")
         if subject.entity_type not in predicate_spec.subject:
@@ -254,6 +291,13 @@ class ActionService:
                 raise ActionValidationError("claim.object_id", "self-claims are forbidden")
             if predicate_spec.symmetric and object_id < subject_id:
                 subject_id, object_id = object_id, subject_id
+                # The anchors travel with the arguments they anchor.  Leaving
+                # them behind would attach each claim to the other side's
+                # mention, which is worse than no anchor: it looks verified.
+                subject_mention_id, object_mention_id = (
+                    object_mention_id,
+                    subject_mention_id,
+                )
 
         if assertion_type not in ASSERTION_TYPES:
             raise ActionValidationError(
@@ -284,6 +328,13 @@ class ActionService:
             )
         self._check_anchor("subject", subject_mention_id, subject_id)
         self._check_anchor("object", object_mention_id, object_id)
+        self._require_anchors(
+            assertion_type,
+            collection_method,
+            subject_mention_id=subject_mention_id,
+            object_mention_id=object_mention_id,
+            object_id=object_id,
+        )
 
         row = Claim(
             claim_id=claim_id or new_id("clm"),
@@ -321,6 +372,110 @@ class ActionService:
         self.session.flush()
         return row
 
+    def _require_anchors(
+        self,
+        assertion_type: str,
+        collection_method: str | None,
+        *,
+        subject_mention_id: str | None,
+        object_mention_id: str | None,
+        object_id: str | None,
+    ) -> None:
+        """ADR-029 rule 1, enforced here rather than by a CHECK.
+
+        A claim that says the source *observed* or *reported* something must be
+        able to point at the words.  ``inferred`` and ``assessed`` claims are
+        an analyst's own reasoning and legitimately have no mention, so the
+        rule keys off ``assertion_type`` — semantics the database does not own.
+
+        Curated and manual collection are exempt for the same reason: a human
+        entering a claim from a document they read is the adjudicator, and no
+        extractor recorded an offset for them.
+        """
+        if assertion_type not in ANCHOR_REQUIRED_ASSERTIONS:
+            return
+        if collection_method in ANCHOR_EXEMPT_COLLECTION_METHODS:
+            return
+        if subject_mention_id is None:
+            raise ActionValidationError(
+                "claim.subject_mention_id",
+                f"an anchor is required for {assertion_type!r} claims — the "
+                "source text the subject was read from",
+            )
+        if object_id is not None and object_mention_id is None:
+            raise ActionValidationError(
+                "claim.object_mention_id",
+                f"an anchor is required for {assertion_type!r} claims — the "
+                "source text the object was read from",
+            )
+
+    def _entity_from_mention(
+        self,
+        mention_id: str | None,
+        path: str,
+        allowed_types: Sequence[str],
+        requested_type: str | None = None,
+    ) -> str | None:
+        """Resolve a mention to its entity, creating one if nobody has ruled yet.
+
+        Creating an entity for an unadjudicated mention is **not** a merge: it
+        is a single-mention entity at the current revision, which is exactly
+        what "this text names someone we have no other record of" means
+        (spec 02 §3.2).  Merging it into anything later is an
+        ``adjudicate_identity`` decision like any other.
+        """
+        if mention_id is None:
+            return None
+        mention = self.session.get(Mention, mention_id)
+        if mention is None:
+            raise ActionValidationError(path, f"mention {mention_id!r} does not exist")
+        existing = active_entity_for_mention(self.session, mention_id)
+        if existing is not None:
+            return existing
+        if not allowed_types:
+            raise ActionValidationError(
+                path, "this predicate takes no entity argument to create"
+            )
+        entity = Entity(
+            entity_id=new_id("ent"),
+            entity_type=self._entity_type_for(allowed_types, requested_type, path),
+            label=mention.raw_text,  # display only; rebuilt from name claims
+        )
+        self.session.add(entity)
+        self.session.flush()
+        open_membership(
+            self.session, mention_id=mention_id, entity_id=entity.entity_id
+        )
+        return entity.entity_id
+
+    @staticmethod
+    def _entity_type_for(
+        allowed_types: Sequence[str], requested_type: str | None, path: str
+    ) -> str:
+        """The type of an entity created from a mention.
+
+        The predicate narrows the choice; where it still leaves more than one,
+        the producer must have proposed one.  Guessing here would silently
+        decide whether a name is a person or an organization — a judgement the
+        text supports and the schema does not.
+        """
+        candidates = [value for value in allowed_types if value != "literal"]
+        if requested_type is not None:
+            if requested_type not in candidates:
+                raise ActionValidationError(
+                    path,
+                    f"entity type {requested_type!r} is not allowed here "
+                    f"(expected one of {sorted(candidates)})",
+                )
+            return requested_type
+        if len(candidates) != 1:
+            raise ActionValidationError(
+                path,
+                "cannot create an entity from a mention: the predicate allows "
+                f"{sorted(candidates)}, so the type must be proposed explicitly",
+            )
+        return candidates[0]
+
     def _check_anchor(
         self, role: Literal["subject", "object"], mention_id: str | None, entity_id: str | None
     ) -> None:
@@ -344,7 +499,15 @@ class ActionService:
                 f"claim.{role}_mention_id", f"mention {mention_id!r} does not exist"
             )
         owner = active_entity_for_mention(self.session, mention_id)
-        if owner is not None and owner != entity_id:
+        if owner is None:
+            # Writing this claim *is* the statement that this text names this
+            # entity, so the mention attaches here rather than being left
+            # belonging to nothing.  Not an adjudication: an unresolved mention
+            # joining an entity is resolution (spec 02 §3.2), and a mention
+            # that already belongs elsewhere is rejected below instead.
+            open_membership(self.session, mention_id=mention_id, entity_id=entity_id)
+            return
+        if owner != entity_id:
             raise ActionValidationError(
                 f"claim.{role}_mention_id",
                 f"mention {mention_id!r} belongs to entity {owner!r}, not {entity_id!r}",
