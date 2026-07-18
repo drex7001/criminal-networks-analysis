@@ -273,10 +273,17 @@ analyst-authored and assessment claims legitimately have no textual mention.
    - **Anchored** claims follow their mention. The mention moved to a specific
      entity, so the claim's attribution is decided — no human is asked, and no
      claim row is rewritten.
-   - **Unanchored** claims route to **re-adjudication**: a
-     `claim_relation`-kind entry in the review inbox naming both candidate
-     entities. They are never silently reassigned to either side, and never
-     dropped (Article VIII).
+   - **Unanchored** claims route to **re-adjudication**: a **`claim_draft`**
+     entry in the review inbox proposing a replacement claim on the other
+     candidate entity, carrying `supersedes` = the original. They are never
+     silently reassigned to either side, and never dropped (Article VIII).
+
+     *(T20 correction: this rule originally said a `claim_relation` entry. That
+     kind's target action is `link_claims`, which records corroborates /
+     contradicts — it cannot express "this claim belongs to the other entity".
+     A `claim_draft` can, it keeps the closed kind list at three (ADR-031 §1),
+     and it satisfies rule 5 below by construction: the original row is never
+     touched, and a human decides whether a superseding claim should exist.)*
 5. **No claim row is ever rewritten by an identity decision.** Merges and
    splits change memberships and the canonical map; `claim.subject_id` and
    `claim.object_id` are immutable after write. This is the property the
@@ -367,9 +374,9 @@ ontology — adding a kind is a schema + mapping change, never a queue migration
 
 | `suggestion_kind` | `target_action` | Result reference | Producers in P2 |
 |---|---|---|---|
-| `claim_draft` | `record_claim` | `result_claim_id` | `structural_pass`, `semantic_pass` |
+| `claim_draft` | `record_claim` | `result_claim_id` | `structural_pass`, `semantic_pass`, `split-readjudication` (§3.1 rule 4) |
 | `identity_candidate` | `adjudicate_identity` | `result_decision_id` | promoted from `er_candidate` |
-| `claim_relation` | `link_claims` | `result_relation` | split re-adjudication (§3.1 rule 4), analyst |
+| `claim_relation` | `link_claims` | `result_relation` | analyst |
 
 **Entity creation folds into `claim_draft`** — there is no `entity_draft` kind.
 A draft's `subject_ref`/`object_ref` may name an unresolved mention instead of

@@ -151,13 +151,15 @@ is declared and audited, which is a gap T20 closes.
 
 ## 4. Adjudication actions
 
-All four are modes of the single ontology action `adjudicate_identity`.
+**Implemented** in `aegis/er/adjudication.py` with the transaction and audit in
+`ActionService.adjudicate_identity` (T20). All four are modes of the single
+ontology action `adjudicate_identity`.
 
 | Action | Effect |
 |---|---|
 | `confirm_match` | ledger decision + new revision: close B-memberships → open A-memberships at the new revision; merge lineage recorded as **ledger metadata** (ADR-028 — not a claim); note required |
 | `reject_match` | records a versioned negative constraint (§3.3); the pair is not re-suggested while it holds |
-| `split_entity` | ledger decision + new revision: selected mentions move to a new or restored entity; unanchored claims on the split entity route to **re-adjudication** (ADR-029 §4); note required |
+| `split_entity` | ledger decision + new revision: selected mentions move to a new or restored entity; unanchored claims on the split entity route to **re-adjudication** (ADR-029 §4); note required. A split that moves *every* mention is refused — that is a rename, and it would leave the original entity empty while changing nothing knowable |
 | `mark_unresolved` | keeps the pair visible in an "unresolved identities" list (Article VIII) — an explicit decision, not an absence of one |
 
 Each is a **single transaction** writing decision + revision + membership

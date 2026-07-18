@@ -21,6 +21,15 @@ from sqlalchemy.orm import Session
 from aegis.actions.ids import new_id
 from aegis.audit import append as append_audit
 from aegis.config import get_settings
+from aegis.er.adjudication import (
+    ADJUDICATION_MODES,
+    AdjudicationError,
+    AdjudicationResult,
+    confirm_match,
+    mark_unresolved,
+    reject_match,
+    split_entity,
+)
 from aegis.er.ledger import (
     active_entity_for_mention,
     active_revision_id,
@@ -103,6 +112,12 @@ class ActionContext:
     purpose: str | None = None
     session_id: str | None = None
     case_id: str | None = None
+    #: Roles the actor holds, for the ontology's per-action `roles` gate.
+    #: Empty means "not supplied" and skips the check — the Phase-1 actions
+    #: are gated at the API layer and pass no roles here.
+    roles: frozenset[str] = frozenset()
+    #: The second approver, where the ontology declares `dual_control_for`.
+    second_actor: str | None = None
 
     def __post_init__(self) -> None:
         if not self.actor.strip():
@@ -134,13 +149,45 @@ class ActionService:
             with self.session.begin():
                 yield
 
-    def _require_action(self, name: str) -> None:
+    def _require_action(
+        self,
+        name: str,
+        context: ActionContext | None = None,
+        *,
+        dual_control_flags: Sequence[str] = (),
+    ) -> None:
+        """Gate a write on what the ontology declares about the action.
+
+        ``context`` is optional only because the Phase-1 actions predate role
+        enforcement here; the API layer gates them by role independently
+        (spec 03 §3). Passing it enforces the ontology's own `roles` list at
+        the write, which is what makes the declaration load-bearing rather
+        than documentation (spec 05 §3.4).
+        """
         try:
             action = self.ontology.action(name)
         except OntologyError as exc:
             raise ActionValidationError(f"actions.{name}", "not declared in ontology") from exc
         if not action.audit:  # loader already rejects this; retain the write-side guard.
             raise ActionValidationError(f"actions.{name}.audit", "must be true")
+        if context is not None and action.roles and not (set(action.roles) & context.roles):
+            raise ActionValidationError(
+                f"actions.{name}.roles",
+                f"requires one of {sorted(action.roles)}; actor holds "
+                f"{sorted(context.roles) or 'none'}",
+            )
+        required = set(action.dual_control_for or ()) & set(dual_control_flags)
+        if required and context is not None and context.second_actor is None:
+            raise ActionValidationError(
+                f"actions.{name}.dual_control_for",
+                f"{sorted(required)} requires a second approver; the decision was "
+                "not written",
+            )
+        if required and context is not None and context.second_actor == context.actor:
+            raise ActionValidationError(
+                f"actions.{name}.dual_control_for",
+                "the second approver must be a different person",
+            )
 
     def _handling(self, value: str, path: str = "handling_codes") -> None:
         if value not in self.ontology.handling_codes:
@@ -531,6 +578,128 @@ class ActionService:
                 },
             )
         return row
+
+    def adjudicate_identity(
+        self,
+        context: ActionContext,
+        *,
+        mode: str,
+        parent_revision_id: int,
+        note: str,
+        protected_person: bool = False,
+        **params: Any,
+    ) -> AdjudicationResult:
+        """The single action behind confirm / reject / split / unresolved.
+
+        One transaction writes the decision, its revision, the membership
+        changes and the audit row (spec 05 §4).  ``decided_by`` is
+        ``context.actor`` and nothing else — a rule is never a decider
+        (ADR-027, Article VII).
+        """
+        self._require_action(
+            "adjudicate_identity",
+            context,
+            dual_control_flags=("protected_person",) if protected_person else (),
+        )
+        if mode not in ADJUDICATION_MODES:
+            raise ActionValidationError(
+                f"adjudicate_identity.mode.{mode}",
+                f"not supported (expected one of {sorted(ADJUDICATION_MODES)})",
+            )
+        # An evidence note is required on every mode, always (spec 05 §2): a
+        # merge nobody explained is a merge nobody can review later.
+        if not note.strip():
+            raise ActionValidationError(
+                "adjudicate_identity.note", "an evidence note is required"
+            )
+        handler = {
+            "confirm_match": confirm_match,
+            "reject_match": reject_match,
+            "split_entity": split_entity,
+            "mark_unresolved": mark_unresolved,
+        }[mode]
+        with self._transaction():
+            try:
+                result = handler(
+                    self.session,
+                    actor=context.actor,
+                    note=note,
+                    parent_revision_id=parent_revision_id,
+                    **params,
+                )
+            except TypeError as exc:
+                raise ActionValidationError(
+                    f"adjudicate_identity.{mode}", f"invalid arguments: {exc}"
+                ) from exc
+            except AdjudicationError as exc:
+                raise ActionValidationError(f"adjudicate_identity.{mode}", str(exc)) from exc
+            # Claims a split could not attribute are queued for a human, never
+            # reassigned (spec 02 §3.1 rule 4).
+            for claim_id in result.unattributable_claims:
+                self._queue_reattribution(context, claim_id, result)
+            self._audit(
+                context,
+                action="adjudicate_identity",
+                resource_type="identity_decision",
+                resource_id=result.decision.decision_id,
+                detail={
+                    "mode": mode,
+                    "note": note,
+                    "parent_revision_id": parent_revision_id,
+                    "result_revision_id": result.revision.revision_id,
+                    "moved_mentions": result.moved_mentions,
+                    "surviving_entity_id": result.surviving_entity_id,
+                    "new_entity_id": result.new_entity_id,
+                    "second_actor": context.second_actor,
+                    "unattributable_claims": result.unattributable_claims,
+                },
+            )
+        return result
+
+    def _queue_reattribution(
+        self, context: ActionContext, claim_id: str, result: AdjudicationResult
+    ) -> None:
+        """Surface an unanchored claim a split could not attribute.
+
+        The queue row is a **`claim_draft`**, not a bespoke kind: the correction
+        is a replacement claim pointing at the other entity and superseding this
+        one.  That keeps the closed kind list at three (ADR-031 §1) *and*
+        honours "no claim row is ever rewritten by an identity decision" — the
+        original stays exactly as written, and a human decides whether a
+        superseding claim should exist.
+        """
+        claim = self.session.get(Claim, claim_id)
+        if claim is None or result.new_entity_id is None:
+            return
+        payload = {
+            "subject_id": result.new_entity_id,
+            "predicate": claim.predicate,
+            "object_id": claim.object_id,
+            "object_value": claim.object_value,
+            "assertion_type": claim.assertion_type,
+            "record_id": claim.record_id,
+            "collection_method": claim.collection_method,
+            "excerpt": claim.excerpt,
+            "supersedes": claim.claim_id,
+        }
+        self.submit_suggestion(
+            context,
+            payload={key: value for key, value in payload.items() if value is not None},
+            suggestion_kind="claim_draft",
+            producer="split-readjudication",
+            producer_version=result.decision.decision_id,
+            producer_meta={
+                "reason": "unanchored claim on a split entity (spec 02 §3.1 rule 4)",
+                "decision_id": result.decision.decision_id,
+                "original_claim_id": claim.claim_id,
+                "candidate_entities": [
+                    result.surviving_entity_id,
+                    result.new_entity_id,
+                ],
+            },
+            record_id=claim.record_id,
+            case_id=claim.case_id,
+        )
 
     def retract_claim(
         self, context: ActionContext, *, claim_id: str, reason: str
