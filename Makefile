@@ -24,7 +24,7 @@ logs:          ## make logs S=keycloak
 	$(COMPOSE) logs -f $(S)
 
 install:       ## install the aegis package (editable) + dev deps into .venv
-	uv pip install -p $(PY) -e ".[dev]"
+	uv sync --locked --extra dev
 
 test:
 	$(PY) -m pytest -q
