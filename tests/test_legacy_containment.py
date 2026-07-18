@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from aegis.api import create_app
+from aegis.api.routes import graph
 from aegis.cli import app as cli_app
 from aegis.config import get_settings
 
@@ -60,6 +61,11 @@ def test_serve_allows_explicit_non_loopback_override(monkeypatch) -> None:
 
 def test_legacy_graph_rejects_response_over_cap(monkeypatch) -> None:
     monkeypatch.setenv("AEGIS_LEGACY_API_MAX_RESPONSE_BYTES", "1024")
+    monkeypatch.setattr(
+        graph,
+        "_load_graph",
+        lambda: {"nodes": [{"name": "x" * 2048}], "edges": [], "cells": []},
+    )
     get_settings.cache_clear()
     try:
         response = TestClient(create_app()).get("/api/graph")
@@ -72,6 +78,11 @@ def test_legacy_graph_rejects_response_over_cap(monkeypatch) -> None:
 
 def test_legacy_routes_are_rate_limited_per_client(monkeypatch) -> None:
     monkeypatch.setenv("AEGIS_LEGACY_API_RATE_LIMIT_PER_MINUTE", "2")
+    monkeypatch.setattr(
+        graph,
+        "_load_graph",
+        lambda: {"nodes": [], "edges": [], "cells": []},
+    )
     get_settings.cache_clear()
     client = TestClient(create_app(), client=("t16a-rate-client", 50000))
     try:
