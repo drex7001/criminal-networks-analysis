@@ -11,8 +11,12 @@ surface, both deleted in the same change (ADR-026).
 - **Auth shell** — Keycloak OIDC with PKCE via `react-oidc-context` /
   `oidc-client-ts`; an unauthenticated visit redirects to sign in.
 - **Graph view** — Cytoscape.js reading `POST /v1/graph/expand`: authenticated,
-  authorization-filtered, and bounded. Clicking a node expands from it; clicking
-  an edge opens its support summary.
+  authorization-filtered, and bounded. Entity search (T23c) seeds it, so spec 07
+  §5's "search first, expand second" is literally that rather than the bounded
+  overview standing in. Clicking an edge or a node opens the provenance panel;
+  **selecting does not re-lay out the graph** — focusing is a button inside the
+  panel, because re-drawing the canvas under someone who clicked to read is how
+  they lose the thing they were looking at.
 - **Sources view** (T23a) — land a file or a pasted note with its provenance,
   read the register of what has landed, and run the derivative + extraction
   stages per record. Quarantined records show their reason and offer release.
@@ -23,8 +27,15 @@ surface, both deleted in the same change (ADR-026).
   the producer metadata that makes it checkable; every candidate shows its
   per-feature waterfall.
 
-T23c adds the full provenance panel and entity search. P4 adds object views,
-cases and timeline to this same app.
+- **Provenance panel** (T23c) — two modes over two routes, because they answer
+  different questions. An **edge** asks "why are these two connected?"
+  (`why-connected`: relation claims, their sources, and the identity decisions
+  that made the endpoints these endpoints). A **node** asks "what is claimed
+  about this one?" (`GET /v1/entities/{id}`: property claims grouped by
+  predicate). Disagreeing claims about one property render **side by side** in
+  a comparison grid with a `contradicts` badge — see rule 3.
+
+P4 adds object views, cases and timeline to this same app.
 
 ## Two rules the screens follow
 
@@ -48,12 +59,24 @@ accident:
    which is the one thing a reviewer is there to weigh. The column arguing
    against uses the caution bronze, never the failure colour: it is a judgement
    about evidence, not a request that failed.
+4. **A contradiction is a lens, not a weakening** (T23c). Contested support is
+   *marked*, never dimmed — a dashed edge on the canvas, a bronze rail and a
+   `contradicts` badge in the panel. Dimming would read as "weaker evidence";
+   the point is that two sources disagree and neither has been chosen. Both
+   readings render side by side, in columns, so the reader compares values
+   across one line instead of holding the first in memory while reading the
+   second — and corroboration is shown *beside* contradiction, never subtracted
+   from it (Article VIII).
+5. **The search says how it found each hit** (T23c). A phonetic match is a lead,
+   not a name match: metaphone collapses genuinely different names, so it is
+   scored low, labelled "sounds like", and chipped with a dashed border. A list
+   that rendered it like a name hit would overstate what the index found.
 
 ## Navigation
 
-`src/routing.ts` — path-based, on the History API, no router library. Two views
-do not need one; they do need real URLs, a back button and a path the auth guard
-can return to.
+`src/routing.ts` — path-based, on the History API, no router library. Three
+views do not need one; they do need real URLs, a back button and a path the auth
+guard can return to.
 
 The rule that matters: **anything that moves the URL has to announce it.**
 `pushState` and `replaceState` fire no event. The sign-in callback rewrites the

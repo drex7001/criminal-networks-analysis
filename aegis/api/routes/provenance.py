@@ -16,19 +16,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from aegis.api.deps import AuthContext, DbSession, OntologyDep, authorize
+from aegis.api.mappers import claim_provenance_out
 from aegis.api.schemas import (
-    ClaimOut,
     ClaimProvenanceOut,
-    GradingOut,
     IdentityDecisionOut,
-    MentionOut,
-    SourceOut,
-    SourceRecordOut,
     WhyConnectedOut,
 )
 from aegis.authz.filters import claim_filters
 from aegis.queries.provenance import (
-    ClaimProvenance,
     IdentityLine,
     claim_provenance,
     identity_history,
@@ -36,35 +31,6 @@ from aegis.queries.provenance import (
 )
 
 router = APIRouter(tags=["provenance"])
-
-
-def _claim_out(entry: ClaimProvenance) -> ClaimProvenanceOut:
-    claim = entry.claim
-    return ClaimProvenanceOut(
-        claim=ClaimOut.model_validate(claim),
-        grading=GradingOut(
-            # Reliability is graded on the source, not the claim: repeating a
-            # claim does not make its source more reliable.
-            reliability=entry.source.reliability_normalized if entry.source else None,
-            credibility=claim.credibility_normalized,
-            verification=claim.verification_status,
-            analytic_confidence=claim.analytic_confidence,
-        ),
-        source=SourceOut.model_validate(entry.source) if entry.source else None,
-        record=SourceRecordOut.model_validate(entry.record) if entry.record else None,
-        corroborated_by=entry.corroborated_by,
-        contradicted_by=entry.contradicted_by,
-        subject_mention=(
-            MentionOut.model_validate(entry.subject_mention)
-            if entry.subject_mention
-            else None
-        ),
-        object_mention=(
-            MentionOut.model_validate(entry.object_mention)
-            if entry.object_mention
-            else None
-        ),
-    )
 
 
 def _decision_out(line: IdentityLine) -> IdentityDecisionOut:
@@ -95,7 +61,7 @@ def get_why_connected(
     if result is None:
         raise HTTPException(404, "not found")
 
-    claims = [_claim_out(entry) for entry in result.claims]
+    claims = [claim_provenance_out(entry) for entry in result.claims]
     # Distinct relations, not a sum over claims: two claims on one edge that
     # contradict each other are one disagreement, and inflating that number
     # would misinform exactly the reader who came here to judge the edge.
@@ -146,7 +112,7 @@ def get_claim_provenance(
     )
     if entry is None:
         raise HTTPException(404, "not found")  # absent and unauthorized look alike
-    return _claim_out(entry)
+    return claim_provenance_out(entry)
 
 
 @router.get(

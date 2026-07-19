@@ -10,8 +10,10 @@ lettered subtasks keep the global T-numbering stable for pre-authored P3+ files.
 > non-deferrable (ADR-025). The Phase 1 closure addendum (T16a–T16d), which
 > gated Milestones B–D, closed 2026-07-18 (PRs #11–#14). **Milestones A and
 > B are complete** (T17a–T17d, PRs #17–#20; T17–T20, PRs #22–#26).
-> **Milestone C is in progress**: T21 (PRs #27, #29), T22, T23a and T23b are
-> complete; T23c (provenance panel, contradictions & entity search) is next.
+> **Milestone C is in progress**: T21 (PRs #27, #29), T22, T23a, T23b and T23c
+> are complete; T24a (field-level sensitivity filtering) is next. With T23c the
+> Phase 2 API surface is complete — no route spec 06 declares for this phase is
+> unimplemented.
 
 ## Milestone A — Design pack (⛓ blocks B–D; specs rewritten before code) — **COMPLETE 2026-07-18**
 
@@ -512,6 +514,48 @@ graph.
 AC: every rendered edge opens the panel; seeded contradictory DOB claims both
 render with a visible `contradicts` badge; a transliterated query variant
 finds the seeded entity; results respect handling + case filters.
+**COMPLETE 2026-07-19.**
+
+Two spec-declared routes were missing under this task, and one was wrong.
+
+`GET /v1/search/entities` and `POST /v1/projections/rebuild` were both declared
+in spec 06 and unimplemented — the last two on the Phase 2 surface. A route diff
+against the live app found them; the four other unimplemented rows are deferred
+by the spec's own non-goals (analytics and findings promotion are P6, exports
+P7) and were left alone rather than built ahead of their phase gate.
+
+The wrong one was `GET /v1/entities/{id}`, which filtered on `subject_id`
+without resolving through the canonical map while `why_connected` resolved and
+documented why. After any adjudicated merge, claims written against the
+absorbed id vanished from the surviving entity's own detail view — evidence
+lost to a merge, which Article V exists to prevent. Fixed with the same
+resolution `why_connected` uses (ADR-036).
+
+Three design points settled in the building:
+
+- **The contradiction AC belongs to a node, not an edge.** "Conflicting property
+  claims render side by side" is about two dates of birth, which are a property
+  of one entity; `why-connected` answers about a *pair* and has no node
+  equivalent. So the panel has two modes over two routes, and the node mode
+  needed `GET /v1/entities/{id}` to carry claim relations at all — it returned
+  grouped claims with no way to know the store recorded them as contradicting
+  (ADR-036). Grouping is what puts them side by side; `contradicted_by` is what
+  lets the badge exist.
+- **Selecting a node opens its claims instead of re-seeding the canvas.** T22
+  wired node clicks straight to the seed, so clicking to read re-laid out the
+  graph under the reader. Focusing is offered inside the panel instead, which
+  keeps it a decision rather than a side effect. An e2e case pins it.
+- **"1 concurrent" is a lock, not a rate limit.** Spec 06 §2.6 caps the rebuild
+  at one at a time. The risk is not request volume — the rebuild is idempotent,
+  so two produce the same table — it is two full scans of the claim store
+  contending over the same rows, which an admin triggers by double-clicking. A
+  transaction-scoped Postgres advisory lock refuses the second with 409 and
+  releases on rollback, so a failed rebuild cannot wedge the route.
+
+*Search.* Delivered against ADR-035's stored transliteration keys. Ordering is
+deterministic (`-score, label, entity_id`) so T24c can add cursors without
+changing what the route returns. Cursor pagination itself is T24c's row, which
+names search among the routes it covers, so it is not duplicated here.
 
 **T24a. Field-level sensitivity filtering** (specs/03 §4; hard gate) —
 property `sensitivity` from the ontology enforced on every read path (absent,

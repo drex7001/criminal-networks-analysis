@@ -78,11 +78,6 @@ class EntityOut(BaseModel):
     created_at: datetime
 
 
-class EntityDetail(BaseModel):
-    entity: EntityOut
-    claims_by_predicate: dict[str, list[ClaimOut]]
-
-
 class SourceIn(BaseModel):
     source_type: str
     name: str = Field(min_length=1)
@@ -347,6 +342,42 @@ class ClaimProvenanceOut(BaseModel):
     object_mention: MentionOut | None
 
 
+class ProjectionRebuildOut(BaseModel):
+    """What one rebuild produced (spec 06 §2.6, Article XIII)."""
+
+    edges: int
+    segments: int
+    claims_considered: int
+    collapsed_endpoints: int
+    #: Endpoints resolved through a mention anchor vs. through the canonical
+    #: map. The second kind cannot survive a split, so the ratio is a live
+    #: measure of how reversible the projected graph actually is.
+    anchor_resolved: int
+    map_resolved: int
+    built_at_revision_id: int
+    ontology_version: str
+    builder_version: str
+
+
+class EntityDetail(BaseModel):
+    """One entity's claims, grouped by predicate (spec 06 §2.1).
+
+    Each entry is a full ``ClaimProvenanceOut`` rather than a bare claim, so
+    two claims disagreeing about the same property arrive already knowing they
+    disagree. Grouping is what puts them side by side; ``contradicted_by`` is
+    what stops the reader having to notice unaided (Article VIII).
+    """
+
+    entity: EntityOut
+    claims_by_predicate: dict[str, list[ClaimProvenanceOut]]
+    #: Set when the requested id has been merged away, so a caller following a
+    #: stale link is told rather than quietly answered about a different id.
+    resolved_entity_id: str
+    #: True when the claim cap was reached — a thin panel is never mistaken for
+    #: thin evidence.
+    truncated: bool = False
+
+
 class IdentityDecisionOut(BaseModel):
     """A human's identity decision: who, when, why, and which revision."""
 
@@ -405,6 +436,25 @@ class CandidateOut(BaseModel):
     pre_verified: bool
     disposition: str
     created_at: datetime
+
+
+class EntityHitOut(BaseModel):
+    """One search result, with how it was found."""
+
+    entity_id: str
+    label: str
+    entity_type: str
+    score: float
+    #: `label`, `alias`, `mention` or `phonetic`. Reported because they are not
+    #: equally strong evidence: metaphone collapses genuinely different names,
+    #: so a phonetic hit is a lead, and a list that renders it like a name
+    #: match invites the reader to treat it as one.
+    matched: str
+
+
+class SearchResultsOut(BaseModel):
+    query: str
+    results: list[EntityHitOut]
 
 
 class CandidateListOut(BaseModel):

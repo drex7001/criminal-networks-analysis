@@ -42,6 +42,18 @@ export type DecisionRequest =
   | components["schemas"]["MarkUnresolvedIn"];
 export type OntologyVocabulary = components["schemas"]["OntologyVocabularyOut"];
 
+export type WhyConnected = components["schemas"]["WhyConnectedOut"];
+export type EntityDetail = components["schemas"]["EntityDetail"];
+/**
+ * One claim with its evidence — the unit both provenance panels render. The
+ * three grading dimensions arrive apart (Article III) and both relation
+ * directions survive, so the UI cannot accidentally net them into a score.
+ */
+export type ClaimProvenance = components["schemas"]["ClaimProvenanceOut"];
+export type SearchResults = components["schemas"]["SearchResultsOut"];
+export type EntityHit = components["schemas"]["EntityHitOut"];
+export type ProjectionRebuild = components["schemas"]["ProjectionRebuildOut"];
+
 /**
  * RFC 7807 problem detail — what every Aegis error is (spec 06).
  *
@@ -275,6 +287,38 @@ export async function batchConfirmCandidates(body: {
   note: string;
 }): Promise<BatchConfirmResult> {
   return unwrap(await api.POST("/v1/identity/candidates/batch-confirm", { body }));
+}
+
+/* ── provenance & search (T23c) ────────────────────────────────────────── */
+
+export async function whyConnected(
+  entityId: string,
+  otherId: string,
+): Promise<WhyConnected> {
+  return unwrap(
+    await api.GET("/v1/entities/{entity_id}/why-connected/{other_id}", {
+      params: { path: { entity_id: entityId, other_id: otherId } },
+    }),
+  );
+}
+
+export async function getEntity(entityId: string): Promise<EntityDetail> {
+  return unwrap(
+    await api.GET("/v1/entities/{entity_id}", {
+      params: { path: { entity_id: entityId } },
+    }),
+  );
+}
+
+export async function searchEntities(
+  q: string,
+  limit = 10,
+): Promise<SearchResults> {
+  return unwrap(await api.GET("/v1/search/entities", { params: { query: { q, limit } } }));
+}
+
+export async function rebuildProjections(): Promise<ProjectionRebuild> {
+  return unwrap(await api.POST("/v1/projections/rebuild", {}));
 }
 
 /**

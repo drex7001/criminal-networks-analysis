@@ -63,6 +63,18 @@ class ClaimProvenance:
 
 
 @dataclass
+class EntityProvenance:
+    """One entity's own claims, with the relations between them (T23c)."""
+
+    entity_id: str
+    #: Differs from ``entity_id`` when the caller followed a link to an id that
+    #: has since been merged away. Reported rather than silently substituted.
+    resolved_entity_id: str
+    claims: list[ClaimProvenance] = field(default_factory=list)
+    truncated: bool = False
+
+
+@dataclass
 class IdentityLine:
     """A decision that put a mention where it now is."""
 
@@ -277,6 +289,48 @@ def why_connected(
     )
 
 
+def entity_provenance(
+    session: Session,
+    *,
+    entity_id: str,
+    filters: Sequence[ColumnElement[bool]] = (),
+    limit: int = MAX_CLAIMS,
+) -> EntityProvenance | None:
+    """Every claim about one entity, with the relations between those claims.
+
+    The relations are the reason this exists rather than a plain claim list.
+    Two claims that give a person different dates of birth are a fact *about
+    the evidence*, and the caller assembling this answer already has both rows
+    in hand — making a reader issue one ``claim_provenance`` request per claim
+    to discover that is the N+1 the why-connected route exists to avoid on
+    edges (Article VIII: the disagreement is shown, never netted off).
+
+    Resolves through the canonical map for the same reason ``why_connected``
+    does: a claim written before a merge still names the id it was written
+    against, and asking only about the surviving id would answer "nothing is
+    known" about an entity the graph is actively drawing.
+    """
+    if session.get(Entity, entity_id) is None:
+        return None
+
+    resolved = canonical_entity(session, entity_id)
+    entity_ids = _absorbed_ids(session, resolved)
+    rows = session.scalars(
+        select(Claim)
+        .where(Claim.subject_id.in_(entity_ids), *filters)
+        .order_by(Claim.predicate, Claim.recorded_at, Claim.claim_id)
+        .limit(limit + 1)
+    ).all()
+    truncated = len(rows) > limit
+
+    return EntityProvenance(
+        entity_id=entity_id,
+        resolved_entity_id=resolved,
+        claims=_hydrate(session, list(rows[:limit])),
+        truncated=truncated,
+    )
+
+
 def claim_provenance(
     session: Session, *, claim_id: str, filters: Sequence[ColumnElement[bool]] = ()
 ) -> ClaimProvenance | None:
@@ -302,9 +356,11 @@ def identity_history(session: Session, *, entity_id: str) -> list[IdentityLine] 
 __all__ = [
     "MAX_CLAIMS",
     "ClaimProvenance",
+    "EntityProvenance",
     "IdentityLine",
     "WhyConnected",
     "claim_provenance",
+    "entity_provenance",
     "identity_history",
     "why_connected",
 ]

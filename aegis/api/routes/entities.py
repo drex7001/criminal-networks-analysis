@@ -7,12 +7,13 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
 
 from aegis.api.deps import AuthContext, DbSession, OntologyDep, authorize
-from aegis.api.schemas import ClaimOut, EntityDetail, EntityOut
+from aegis.api.mappers import claim_provenance_out
+from aegis.api.schemas import ClaimProvenanceOut, EntityDetail, EntityOut
 from aegis.authz.filters import claim_filters
-from aegis.store import Claim, Entity
+from aegis.queries.provenance import entity_provenance
+from aegis.store import Entity
 
 router = APIRouter(tags=["entities"])
 
@@ -27,16 +28,31 @@ def get_entity(
     as_of: Annotated[datetime | None, Query(alias="asOf")] = None,
     auth: AuthContext = Depends(authorize()),
 ) -> EntityDetail:
+    """One entity's claims, grouped by predicate, each with its evidence.
+
+    Grouping is what renders two disagreeing claims about the same property
+    side by side; ``contradicted_by`` on each entry is what names the
+    disagreement rather than leaving the reader to spot it (Article VIII).
+    """
     entity = session.get(Entity, entity_id)
     if entity is None:
         raise HTTPException(404, "not found")
-    filters = claim_filters(session, auth.user, ontology, as_of=as_of)
-    rows = session.scalars(
-        select(Claim)
-        .where(Claim.subject_id == entity_id, *filters)
-        .order_by(Claim.predicate, Claim.claim_id)
-    ).all()
-    grouped: dict[str, list[ClaimOut]] = defaultdict(list)
-    for row in rows:
-        grouped[row.predicate].append(ClaimOut.model_validate(row))
-    return EntityDetail(entity=EntityOut.model_validate(entity), claims_by_predicate=grouped)
+    result = entity_provenance(
+        session,
+        entity_id=entity_id,
+        filters=claim_filters(session, auth.user, ontology, as_of=as_of),
+    )
+    # `entity_provenance` re-checks existence and returns None only when the
+    # entity is gone; it was loaded above, so this is unreachable in practice
+    # and asserted rather than branched on.
+    assert result is not None
+
+    grouped: dict[str, list[ClaimProvenanceOut]] = defaultdict(list)
+    for entry in result.claims:
+        grouped[entry.claim.predicate].append(claim_provenance_out(entry))
+    return EntityDetail(
+        entity=EntityOut.model_validate(entity),
+        claims_by_predicate=grouped,
+        resolved_entity_id=result.resolved_entity_id,
+        truncated=result.truncated,
+    )

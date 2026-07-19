@@ -72,9 +72,9 @@ required · **cursor** paginated per §4.
 | `POST /v1/claims/{id}/relations` | analyst | case `can_edit` | corroborates/contradicts | — | `test_actions.py` |
 | `GET /v1/claims/{id}` | — | case `can_view` | grading components separate (Article III), source ref, relations | — | matrix suite |
 | `GET /v1/claims/{id}/provenance` | — | case `can_view` | **generic** provenance for any claim-derived value: source records, all three grading dimensions, relations, identity-decision line (B-14) | — | `test_why_connected.py` (T21) |
-| `GET /v1/entities/{id}` | — | — | claims grouped by predicate; `?asOf=`, `?asOfRevision=` (§3) | — | matrix suite |
+| `GET /v1/entities/{id}` | — | — | claims grouped by predicate, **each with its grading, source and both relation directions** so a property disagreement is named rather than left to be noticed (ADR-036); resolves through the canonical map, reporting `resolved_entity_id`; `?asOf=`, `?asOfRevision=` (§3) | max 200 claims, `truncated` disclosed | `test_entity_provenance.py` (T23c), matrix suite |
 | `GET /v1/entities/{id}/why-connected/{other}` | — | — | claims, gradings, sources, relations, and the identity decisions behind the edge (GOAL.md §18); **undirected**, and resolves through the canonical map so claims written against an absorbed id still answer | max 200 claims, `truncated` disclosed | `test_why_connected.py` (T21) |
-| `GET /v1/search/entities?q=` | — | — | `pg_trgm` over names/aliases/mention norm_keys; **authorization applied in candidate generation, not only hydration** (ADR-012, B-17); cursor | q ≤ 200 chars | `test_search`, matrix suite |
+| `GET /v1/search/entities?q=` | — | — | `pg_trgm` over names/aliases/**mention keys** — `norm_key` plus the stored `latin_key`/`phonetic_key`, which is what makes a romanized query reach a Sinhala name (ADR-035); each hit reports `matched` so a phonetic lead is not read as a name match; **authorization applied in candidate generation, not only hydration** (ADR-012, B-17); deterministic ordering, cursor in T24c | q ≤ 200 chars, limit ≤ 50 | `test_search.py` (T23c), matrix suite |
 
 ### 2.2 Review queue & identity (Articles VII, V)
 
@@ -130,7 +130,7 @@ one audit shape.
 | `POST /v1/graph/paths` | — | — | shortest routes only, not all routes (T22): a path nobody can audit is machine-produced insinuation (Article IX) | ≤ 5 hops, ≤ 25 paths | `test_graph_routes.py` |
 | `POST /v1/analytics/{algo}` | analyst | — | returns `AnalyticFinding` + caveat text (Article IX) — P6 | — | P6 |
 | `POST /v1/findings/{id}/promote` | analyst | — | finding → review queue as an assessed-claim draft — P6 | — | P6 |
-| `POST /v1/projections/rebuild` | admin | — | **controlled job/admin action only** (B-14): full rebuild is a DoS and staleness risk, not general analyst capability | 1 concurrent | `test_projections.py`, matrix suite |
+| `POST /v1/projections/rebuild` | admin | — | **controlled job/admin action only** (B-14): full rebuild is a DoS and staleness risk, not general analyst capability. Returns the build report (edges, segments, anchor/map split, `built_at_revision_id`) and is audited as an operator action (Article X) | 1 concurrent, enforced by a transaction-scoped Postgres advisory lock → 409 | `test_projection_routes.py` (T23c), matrix suite |
 | ~~`GET /api/graph`, `/api/stats`, `/api/cells`, `/api/query/{name}`~~ | — | — | **deleted at T22** (ADR-026) with the `public_route` marker and the legacy explorer. `/api` stays a reserved path prefix so a caller of a retired route gets 404, not the workspace's HTML | — | `test_route_gating.py`, `test_workspace_serving.py` |
 
 ### 2.7 Ontology vocabulary

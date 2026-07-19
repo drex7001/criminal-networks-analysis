@@ -1004,3 +1004,103 @@ is small and will stop being acceptable as it grows.
 — a poll has no request to hold open, so that is where a job model first earns
 its complexity, and it should be introduced there rather than retrofitted
 here.
+
+---
+
+## ADR-035: Transliteration keys are stored on `mention`, and search reads them
+
+**Context.** T23c requires `GET /v1/search/entities` to satisfy "a
+transliterated query variant finds the seeded entity", where the seeded set is
+spec 05 §6's Sinhala/English variant pairs. Spec 06 §2.1 describes the search
+surface as "`pg_trgm` over names/aliases/mention **norm_keys**".
+
+Those two cannot both hold. `norm_key` deliberately **preserves non-Latin
+script** (`aegis/er/normalize.py`): in Sinhala and Tamil the combining marks
+are vowel signs that carry meaning, so folding them would merge names that are
+not the same name. A Sinhala mention therefore has a Sinhala `norm_key`, and no
+key derivable from a Latin query is ever Sinhala. Searching `norm_key` alone
+can match romanized-to-romanized, and never Latin-to-Sinhala.
+
+The cross-script keys already exist — `latin_key`, `script_key`,
+`phonetic_key` in `aegis/er/translit.py` — but they are computed per run inside
+`aegis/er/features.py` and never stored, so no query can reach them.
+
+**Decision.** Persist `latin_key` and `phonetic_key` on `mention`, written at
+mention creation, backfilled by migration `0009`, and indexed (GIN/trigram on
+`latin_key`, btree on `phonetic_key`). `GET /v1/search/entities` matches a
+query's own keys against them in SQL, alongside `Entity.label` and alias
+claims.
+
+`script_key` is **not** stored: it is `norm_key` for the cases that matter, and
+a third near-duplicate column earns nothing.
+
+**Consequences.**
+
+- Cross-script search works in one SQL statement, which is what keeps
+  authorization *in candidate generation* rather than in hydration (spec 06
+  §2.1, ADR-012, B-17). A Python post-filter over a candidate set would have
+  made the result count leak what a caller may not read.
+- ER gains a single stored definition of the keys instead of recomputing them
+  on every run; `features.py` reads the columns.
+- The keys are derived data, so a change to `translit.py` requires a backfill.
+  They are not identity and never were (Article V) — losing them costs a
+  reindex, not a fact.
+- Spec 06 §2.1's "mention norm_keys" is widened to "mention keys" to match.
+
+**Revisit when.** ADR-012's trigger fires and search moves to a dedicated
+engine, which would own its own analysis chain and make these columns a
+denormalization rather than the index.
+
+## ADR-036: Entity detail carries claim relations, and resolves through the canonical map
+
+**Context.** T23c requires the provenance panel to render "conflicting property
+claims side by side" with a visible `contradicts` badge (Article VIII). Two
+dates of birth are a *property* disagreement, so they belong to one entity, not
+to an edge — `GET /v1/entities/{id}/why-connected/{other}` answers the edge
+question and has no node equivalent.
+
+`GET /v1/entities/{id}` already returned "claims grouped by predicate", which
+is the grouping the side-by-side rendering needs. What it did not return was
+any relation between those claims: a caller could see two dates but not that
+the store records them as contradicting. Discovering that meant one
+`GET /v1/claims/{id}/provenance` request per claim.
+
+Reading the route also surfaced a second problem. It filtered on
+`Claim.subject_id == entity_id` with no canonical-map resolution, while
+`why_connected` resolves explicitly and documents why. After a merge, claims
+written against the absorbed id still name that id, so the surviving entity's
+detail view silently dropped them.
+
+**Decision.** Both are fixed in the existing route rather than a new one.
+
+`EntityDetail.claims_by_predicate` becomes `dict[str, list[ClaimProvenanceOut]]`
+— the same unit the why-connected panel renders, so a claim arrives with its
+grading dimensions apart, its source and record, and **both** relation
+directions. A new `entity_provenance()` query resolves through
+`EntityCanonicalMap` exactly as `why_connected` does, and the response reports
+`resolved_entity_id` and `truncated`.
+
+No new route: spec 06 declares none for this, its row's description ("claims
+grouped by predicate") stays true, and a parallel `/entities/{id}/provenance`
+would leave two routes answering "what is claimed here?" differently. The
+shared `ClaimProvenance → ClaimProvenanceOut` mapper moves to
+`aegis/api/mappers.py` so the two panels cannot drift.
+
+**Consequences.**
+
+- The N+1 the why-connected route exists to avoid on edges is now avoided on
+  nodes too. The relations are computed while the caller already holds the
+  rows.
+- A merge can no longer hide evidence from an entity's own view (Article V).
+  This was a live defect, not a hypothetical: any adjudicated merge produced
+  it.
+- The response is heavier than a bare claim list. That is the cost of the panel
+  being able to *name* a disagreement rather than leaving a reader to notice
+  two values differ, which is the whole of Article VIII in the UI.
+- `ClaimOut` remains the unit for the write routes; only the detail read
+  changed.
+
+**Revisit when.** Field-level sensitivity (T24a) lands. Filtering individual
+claim *fields* rather than whole claims may make the grouped shape the wrong
+place to apply the mask, and the panel would need to say which fields were
+withheld rather than silently rendering a thinner card.
