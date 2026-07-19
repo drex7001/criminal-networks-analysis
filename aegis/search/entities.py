@@ -20,7 +20,6 @@ from dataclasses import dataclass
 
 from sqlalchemy import (
     ColumnElement,
-    Float,
     Select,
     Text,
     case,

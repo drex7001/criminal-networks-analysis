@@ -1,23 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { ApiError, expandGraph, type GraphEdge } from "../api/client";
+import { ApiError, expandGraph } from "../api/client";
+import { EntitySearch } from "./EntitySearch";
 import { GraphCanvas } from "./GraphCanvas";
+import { ProvenancePanel, type PanelSelection } from "./ProvenancePanel";
 
 /**
- * The governed graph view (T22). Reads `/v1/graph/expand` — authenticated,
- * authorization-filtered and bounded — which is what replaced the anonymous
- * `/api/graph` dump (ADR-026).
+ * The governed graph view (T22, completed by T23c). Reads `/v1/graph/expand` —
+ * authenticated, authorization-filtered and bounded — which is what replaced
+ * the anonymous `/api/graph` dump (ADR-026).
  *
- * It opens on the **bounded overview** because entity search lands in T23c.
- * "Search first, expand second" (spec 07 §5) degrades to "overview first,
- * expand second" until then; the bound is the same either way, so the mode
- * without a seed is not a bulk export by another name.
+ * T23c gave it the two halves T22 left stubbed: entity search, so spec 07 §5's
+ * "search first, expand second" is literally that rather than "overview first";
+ * and the real provenance panel behind every edge and node.
+ *
+ * Selecting a node **opens its claims** rather than immediately re-seeding the
+ * canvas. Re-laying out the graph under someone who clicked to read is how a
+ * reader loses the thing they were looking at; focusing is offered inside the
+ * panel instead, so it stays a decision rather than a side effect.
  */
 export function GraphView() {
   const [seedId, setSeedId] = useState<string | null>(null);
   const [maxHops, setMaxHops] = useState(1);
-  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  const [selection, setSelection] = useState<PanelSelection | null>(null);
 
   const query = useQuery({
     queryKey: ["graph", seedId, maxHops],
@@ -29,14 +35,30 @@ export function GraphView() {
   });
 
   const onSelectEdge = useCallback(
-    (edgeId: string) =>
-      setSelectedEdge(query.data?.edges.find((e) => e.edge_id === edgeId) ?? null),
+    (edgeId: string) => {
+      const edge = query.data?.edges.find((e) => e.edge_id === edgeId);
+      setSelection(edge ? { kind: "edge", edge } : null);
+    },
     [query.data],
   );
+
+  const onSelectNode = useCallback(
+    (entityId: string) => {
+      const node = query.data?.nodes.find((n) => n.entity_id === entityId);
+      setSelection({ kind: "node", entityId, label: node?.label ?? entityId });
+    },
+    [query.data],
+  );
+
+  const focus = useCallback((entityId: string) => {
+    setSeedId(entityId);
+    setSelection(null);
+  }, []);
 
   return (
     <div className="graph">
       <div className="graph__toolbar">
+        <EntitySearch onPick={focus} />
         <span className="muted" data-testid="graph-mode">
           {seedId ? `Expanding from ${seedId}` : "Bounded overview"}
         </span>
@@ -63,35 +85,45 @@ export function GraphView() {
         <Stamps view={query.data} />
       </div>
 
-      <div className="graph__body">
-        {query.isPending && <p className="muted">Loading graph…</p>}
-        {query.error && <GraphError error={query.error} />}
-        {query.data && (
-          <>
-            {/* Article IX: every bound the answer hit is stated on the answer,
-                never left for the reader to infer from a thin picture. */}
-            {query.data.truncated && (
-              <p className="notice" data-testid="truncated">
-                Bounded result — the graph continues past what is drawn here.
-              </p>
-            )}
-            {query.data.edges.length === 0 && (
-              <p className="notice" data-testid="no-edges">
-                No connections you are cleared to see.
-              </p>
-            )}
-            <GraphCanvas
-              view={query.data}
-              onSelectEdge={onSelectEdge}
-              onSelectNode={setSeedId}
-            />
-          </>
+      {/* Body and panel side by side. `.graph` is a column, so a panel that is
+          a direct sibling of the body competes with it for height and a tall
+          one collapses the canvas it exists to annotate. */}
+      <div className="graph__workspace">
+        <div className="graph__body">
+          {query.isPending && <p className="muted">Loading graph…</p>}
+          {query.error && <GraphError error={query.error} />}
+          {query.data && (
+            <>
+              {/* Article IX: every bound the answer hit is stated on the
+                  answer, never left for the reader to infer from a thin
+                  picture. */}
+              {query.data.truncated && (
+                <p className="notice" data-testid="truncated">
+                  Bounded result — the graph continues past what is drawn here.
+                </p>
+              )}
+              {query.data.edges.length === 0 && (
+                <p className="notice" data-testid="no-edges">
+                  No connections you are cleared to see.
+                </p>
+              )}
+              <GraphCanvas
+                view={query.data}
+                onSelectEdge={onSelectEdge}
+                onSelectNode={onSelectNode}
+              />
+            </>
+          )}
+        </div>
+
+        {selection && (
+          <ProvenancePanel
+            selection={selection}
+            onClose={() => setSelection(null)}
+            onFocus={focus}
+          />
         )}
       </div>
-
-      {selectedEdge && (
-        <EdgeSupport edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
-      )}
     </div>
   );
 }
@@ -125,51 +157,5 @@ function Stamps({ view }: { view: { stamps?: unknown } | undefined }) {
     <span className="muted" data-testid="stamps">
       {label}
     </span>
-  );
-}
-
-/**
- * The T22 stub of the provenance panel. It shows the support summary the edge
- * already carries — each claim's three grading dimensions kept apart
- * (Article III) — and nothing it does not: the full "why connected?" panel,
- * with sources and the identity-decision line, is T23c against the route T21
- * already shipped.
- */
-function EdgeSupport({ edge, onClose }: { edge: GraphEdge; onClose: () => void }) {
-  const support = edge.support as {
-    claims?: Array<Record<string, unknown>>;
-    record_count?: number;
-    contradiction_count?: number;
-    corroboration_count?: number;
-  };
-  return (
-    <aside className="panel" data-testid="edge-panel">
-      <div className="panel__head">
-        <h2>{edge.predicate}</h2>
-        <button type="button" onClick={onClose} aria-label="Close">
-          ×
-        </button>
-      </div>
-      <p className="muted">
-        {edge.segment_from ?? "unbounded"} → {edge.segment_to ?? "unbounded"}
-      </p>
-      <p>
-        {support.record_count ?? 0} source record(s) ·{" "}
-        {support.corroboration_count ?? 0} corroborating ·{" "}
-        {support.contradiction_count ?? 0} contradicting
-      </p>
-      <ul className="claims">
-        {(support.claims ?? []).map((claim) => (
-          <li key={String(claim["claim_id"])}>
-            <code>{String(claim["claim_id"])}</code>
-            <span className="muted">
-              reliability {String(claim["reliability"] ?? "—")} · credibility{" "}
-              {String(claim["credibility"])} · verification{" "}
-              {String(claim["verification"])}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </aside>
   );
 }

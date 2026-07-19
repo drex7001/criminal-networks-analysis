@@ -1050,3 +1050,57 @@ a third near-duplicate column earns nothing.
 **Revisit when.** ADR-012's trigger fires and search moves to a dedicated
 engine, which would own its own analysis chain and make these columns a
 denormalization rather than the index.
+
+## ADR-036: Entity detail carries claim relations, and resolves through the canonical map
+
+**Context.** T23c requires the provenance panel to render "conflicting property
+claims side by side" with a visible `contradicts` badge (Article VIII). Two
+dates of birth are a *property* disagreement, so they belong to one entity, not
+to an edge — `GET /v1/entities/{id}/why-connected/{other}` answers the edge
+question and has no node equivalent.
+
+`GET /v1/entities/{id}` already returned "claims grouped by predicate", which
+is the grouping the side-by-side rendering needs. What it did not return was
+any relation between those claims: a caller could see two dates but not that
+the store records them as contradicting. Discovering that meant one
+`GET /v1/claims/{id}/provenance` request per claim.
+
+Reading the route also surfaced a second problem. It filtered on
+`Claim.subject_id == entity_id` with no canonical-map resolution, while
+`why_connected` resolves explicitly and documents why. After a merge, claims
+written against the absorbed id still name that id, so the surviving entity's
+detail view silently dropped them.
+
+**Decision.** Both are fixed in the existing route rather than a new one.
+
+`EntityDetail.claims_by_predicate` becomes `dict[str, list[ClaimProvenanceOut]]`
+— the same unit the why-connected panel renders, so a claim arrives with its
+grading dimensions apart, its source and record, and **both** relation
+directions. A new `entity_provenance()` query resolves through
+`EntityCanonicalMap` exactly as `why_connected` does, and the response reports
+`resolved_entity_id` and `truncated`.
+
+No new route: spec 06 declares none for this, its row's description ("claims
+grouped by predicate") stays true, and a parallel `/entities/{id}/provenance`
+would leave two routes answering "what is claimed here?" differently. The
+shared `ClaimProvenance → ClaimProvenanceOut` mapper moves to
+`aegis/api/mappers.py` so the two panels cannot drift.
+
+**Consequences.**
+
+- The N+1 the why-connected route exists to avoid on edges is now avoided on
+  nodes too. The relations are computed while the caller already holds the
+  rows.
+- A merge can no longer hide evidence from an entity's own view (Article V).
+  This was a live defect, not a hypothetical: any adjudicated merge produced
+  it.
+- The response is heavier than a bare claim list. That is the cost of the panel
+  being able to *name* a disagreement rather than leaving a reader to notice
+  two values differ, which is the whole of Article VIII in the UI.
+- `ClaimOut` remains the unit for the write routes; only the detail read
+  changed.
+
+**Revisit when.** Field-level sensitivity (T24a) lands. Filtering individual
+claim *fields* rather than whole claims may make the grouped shape the wrong
+place to apply the mask, and the panel would need to say which fields were
+withheld rather than silently rendering a thinner card.

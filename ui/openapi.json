@@ -1209,11 +1209,12 @@
         "type": "object"
       },
       "EntityDetail": {
+        "description": "One entity's claims, grouped by predicate (spec 06 §2.1).\n\nEach entry is a full ``ClaimProvenanceOut`` rather than a bare claim, so\ntwo claims disagreeing about the same property arrive already knowing they\ndisagree. Grouping is what puts them side by side; ``contradicted_by`` is\nwhat stops the reader having to notice unaided (Article VIII).",
         "properties": {
           "claims_by_predicate": {
             "additionalProperties": {
               "items": {
-                "$ref": "#/components/schemas/ClaimOut"
+                "$ref": "#/components/schemas/ClaimProvenanceOut"
               },
               "type": "array"
             },
@@ -1222,11 +1223,21 @@
           },
           "entity": {
             "$ref": "#/components/schemas/EntityOut"
+          },
+          "resolved_entity_id": {
+            "title": "Resolved Entity Id",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
           "entity",
-          "claims_by_predicate"
+          "claims_by_predicate",
+          "resolved_entity_id"
         ],
         "title": "EntityDetail",
         "type": "object"
@@ -2252,6 +2263,60 @@
           "assertion_types"
         ],
         "title": "OntologyVocabularyOut",
+        "type": "object"
+      },
+      "ProjectionRebuildOut": {
+        "description": "What one rebuild produced (spec 06 §2.6, Article XIII).",
+        "properties": {
+          "anchor_resolved": {
+            "title": "Anchor Resolved",
+            "type": "integer"
+          },
+          "builder_version": {
+            "title": "Builder Version",
+            "type": "string"
+          },
+          "built_at_revision_id": {
+            "title": "Built At Revision Id",
+            "type": "integer"
+          },
+          "claims_considered": {
+            "title": "Claims Considered",
+            "type": "integer"
+          },
+          "collapsed_endpoints": {
+            "title": "Collapsed Endpoints",
+            "type": "integer"
+          },
+          "edges": {
+            "title": "Edges",
+            "type": "integer"
+          },
+          "map_resolved": {
+            "title": "Map Resolved",
+            "type": "integer"
+          },
+          "ontology_version": {
+            "title": "Ontology Version",
+            "type": "string"
+          },
+          "segments": {
+            "title": "Segments",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "edges",
+          "segments",
+          "claims_considered",
+          "collapsed_endpoints",
+          "anchor_resolved",
+          "map_resolved",
+          "built_at_revision_id",
+          "ontology_version",
+          "builder_version"
+        ],
+        "title": "ProjectionRebuildOut",
         "type": "object"
       },
       "ProjectionStampsOut": {
@@ -3817,6 +3882,7 @@
     },
     "/v1/entities/{entity_id}": {
       "get": {
+        "description": "One entity's claims, grouped by predicate, each with its evidence.\n\nGrouping is what renders two disagreeing claims about the same property\nside by side; ``contradicted_by`` on each entry is what names the\ndisagreement rather than leaving the reader to spot it (Article VIII).",
         "operationId": "getEntity",
         "parameters": [
           {
@@ -4831,6 +4897,63 @@
         "summary": "Get Vocabulary",
         "tags": [
           "ontology"
+        ]
+      }
+    },
+    "/v1/projections/rebuild": {
+      "post": {
+        "description": "Rebuild the edge projection from canonical claims.\n\nAudited as an operator action (Article X). The report is returned rather\nthan a bare 204 because \"it rebuilt\" is not the useful answer — how many\nendpoints were resolved through a mention anchor versus the canonical map\nis a live measure of how reversible the graph currently is.",
+        "operationId": "rebuildProjections",
+        "parameters": [
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectionRebuildOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rebuild Projections",
+        "tags": [
+          "projections"
         ]
       }
     },

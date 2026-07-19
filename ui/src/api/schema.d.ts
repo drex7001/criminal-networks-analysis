@@ -204,7 +204,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Entity */
+        /**
+         * Get Entity
+         * @description One entity's claims, grouped by predicate, each with its evidence.
+         *
+         *     Grouping is what renders two disagreeing claims about the same property
+         *     side by side; ``contradicted_by`` on each entry is what names the
+         *     disagreement rather than leaving the reader to spot it (Article VIII).
+         */
         get: operations["getEntity"];
         put?: never;
         post?: never;
@@ -483,6 +490,31 @@ export interface paths {
         get: operations["getOntologyVocabulary"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projections/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Projections
+         * @description Rebuild the edge projection from canonical claims.
+         *
+         *     Audited as an operator action (Article X). The report is returned rather
+         *     than a bare 204 because "it rebuilt" is not the useful answer — how many
+         *     endpoints were resolved through a mention anchor versus the canonical map
+         *     is a live measure of how reversible the graph currently is.
+         */
+        post: operations["rebuildProjections"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1099,13 +1131,28 @@ export interface components {
             /** Tool Version */
             tool_version: string;
         };
-        /** EntityDetail */
+        /**
+         * EntityDetail
+         * @description One entity's claims, grouped by predicate (spec 06 §2.1).
+         *
+         *     Each entry is a full ``ClaimProvenanceOut`` rather than a bare claim, so
+         *     two claims disagreeing about the same property arrive already knowing they
+         *     disagree. Grouping is what puts them side by side; ``contradicted_by`` is
+         *     what stops the reader having to notice unaided (Article VIII).
+         */
         EntityDetail: {
             /** Claims By Predicate */
             claims_by_predicate: {
-                [key: string]: components["schemas"]["ClaimOut"][];
+                [key: string]: components["schemas"]["ClaimProvenanceOut"][];
             };
             entity: components["schemas"]["EntityOut"];
+            /** Resolved Entity Id */
+            resolved_entity_id: string;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated?: boolean;
         };
         /**
          * EntityHitOut
@@ -1490,6 +1537,30 @@ export interface components {
             source_types: string[];
             /** Version */
             version: string;
+        };
+        /**
+         * ProjectionRebuildOut
+         * @description What one rebuild produced (spec 06 §2.6, Article XIII).
+         */
+        ProjectionRebuildOut: {
+            /** Anchor Resolved */
+            anchor_resolved: number;
+            /** Builder Version */
+            builder_version: string;
+            /** Built At Revision Id */
+            built_at_revision_id: number;
+            /** Claims Considered */
+            claims_considered: number;
+            /** Collapsed Endpoints */
+            collapsed_endpoints: number;
+            /** Edges */
+            edges: number;
+            /** Map Resolved */
+            map_resolved: number;
+            /** Ontology Version */
+            ontology_version: string;
+            /** Segments */
+            segments: number;
         };
         /**
          * ProjectionStampsOut
@@ -2620,6 +2691,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OntologyVocabularyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuildProjections: {
+        parameters: {
+            query?: {
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectionRebuildOut"];
                 };
             };
             /** @description Validation Error */

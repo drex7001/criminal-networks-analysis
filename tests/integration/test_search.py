@@ -27,7 +27,15 @@ from aegis.api.auth import OIDCAuthenticator
 from aegis.er.ledger import active_revision_id, open_membership
 from aegis.er.translit import latin_key, phonetic_key
 from aegis.er.normalize import norm_key
-from aegis.store import Claim, Entity, Mention, Source, SourceRecord
+from aegis.store import (
+    CaseFile,
+    CaseMember,
+    Claim,
+    Entity,
+    Mention,
+    Source,
+    SourceRecord,
+)
 from tests.support.database import configured_test_database, truncate_domain_data
 
 ISSUER = "http://localhost:8180/realms/aegis"
@@ -301,6 +309,42 @@ def test_a_tombstoned_entity_is_not_a_search_hit(client, world) -> None:
 
     hits = _search(client, ANALYST, "Fictional CHARLIE")
     assert world["entity_open"] not in [hit["entity_id"] for hit in hits]
+
+
+def test_a_case_scoped_entity_is_invisible_to_a_non_member(client, world) -> None:
+    """The second half of "handling + case filters" (T23c AC).
+
+    Case scope is a different axis from clearance: a fully-cleared analyst who
+    is not on the case still may not see its claims, so an entity reachable
+    only through a case claim must not be a candidate for them either.
+    """
+    session: Session = world["session"]
+    scoped = new_id("ent")
+    case_id = new_id("case")
+    with session.begin():
+        session.add(
+            CaseFile(
+                case_id=case_id,
+                title="Fictional case",
+                purpose="testing",
+                handling_code="open",
+                opened_by="user:supervisor",
+            )
+        )
+        session.add(Entity(entity_id=scoped, entity_type="person", label="Fictional FOXTROT"))
+        session.flush()
+        _claim(session, scoped, world["record"], "open", case_id=case_id)
+
+    outsider = _search(client, ANALYST, "Fictional FOXTROT")
+    assert scoped not in [hit["entity_id"] for hit in outsider]
+
+    with session.begin():
+        session.add(CaseMember(case_id=case_id, user_id="user:analyst", role="member"))
+
+    member = _search(client, ANALYST, "Fictional FOXTROT")
+    assert scoped in [hit["entity_id"] for hit in member], (
+        "joining the case makes its entities findable"
+    )
 
 
 def test_noise_is_not_returned(client, world) -> None:
