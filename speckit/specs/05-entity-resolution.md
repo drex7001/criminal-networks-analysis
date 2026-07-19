@@ -232,6 +232,25 @@ Splink settings are versioned in `aegis/er/settings.py` and every run records
 its settings version and graph-snapshot id. A threshold or settings change
 without a rerun of the evaluation in the same PR is a defect.
 
+**First passing run (T26, 2026-07-20).** The committed
+`data/sample/mvp/er-golden-set.json` contains 60 fictional mentions: two known
+variant pairs (including the Sinhala/English Nimal pair), the distinct Ruwan
+Silva namesakes with conflicting stated dates, common names, missing optional
+features, and deterministic hard-negative background mentions. Against
+`rules-v1` / `splink-v1` at the 0.80 emission threshold, CI measured:
+
+| Metric | First passing result | Gate |
+|---|---:|---:|
+| Pre-verified-rule pairwise precision | **1.000** (1 TP, 0 FP) | ≥ 0.95 |
+| Seeded transliteration pairwise recall | **1.000** (2/2) | ≥ 0.70 |
+| Full-pipeline review load | **33.33 candidates / 1,000 mentions** (2/60) | ≤ 50 |
+
+`aegis identity evaluate` writes the complete machine-readable inputs digest,
+settings versions, counts, metrics and gate values to
+`output/er-evaluation.json`. The integration CI job publishes that file as the
+`er-evaluation` artifact even when a gate fails, so a settings/threshold change
+has its evaluation diff beside the failure rather than only a red check.
+
 ## 7. Migration from Phase 1
 
 **Implemented** by `migrations/versions/0007_identity_ledger.py` (T17).

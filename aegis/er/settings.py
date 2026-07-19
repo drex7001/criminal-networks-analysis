@@ -38,12 +38,22 @@ SPLINK_PRODUCER = "splink"
 #: same PR.
 SPLINK_MATCH_THRESHOLD = 0.80
 
+#: T26 golden-set gates, ratified in spec 05 §6.  These constants make the CLI
+#: fail closed; the spec remains the human-facing source of the policy values.
+#: Any change requires the evaluation report diff in the same pull request.
+RULE_PRECISION_FLOOR = 0.95
+TRANSLITERATION_RECALL_FLOOR = 0.70
+REVIEW_LOAD_CEILING_PER_1000 = 50.0
+
 
 __all__ = [
     "IDENTIFIER_RULE_PREFIX",
     "RULES_VERSION",
+    "RULE_PRECISION_FLOOR",
     "SAME_KEY_IN_DOCUMENT_RULE",
+    "REVIEW_LOAD_CEILING_PER_1000",
     "SPLINK_MATCH_THRESHOLD",
     "SPLINK_PRODUCER",
     "SPLINK_VERSION",
+    "TRANSLITERATION_RECALL_FLOOR",
 ]

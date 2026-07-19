@@ -460,6 +460,58 @@ def identity_backfill_anchors(
         )
 
 
+@identity_app.command("evaluate")
+def identity_evaluate(
+    golden_set: Path = typer.Option(
+        None,
+        "--golden-set",
+        help="Fictional aegis.er-golden/v1 JSON (default: T26 committed set).",
+    ),
+    output: Path = typer.Option(
+        None,
+        "--output",
+        help="Machine-readable report path (default: output/er-evaluation.json).",
+    ),
+) -> None:
+    """Run the blocking T26 ER precision, recall, and review-load gates."""
+    from aegis.er.evaluation import (
+        DEFAULT_GOLDEN_SET,
+        DEFAULT_REPORT,
+        EvaluationError,
+        evaluate,
+        write_report,
+    )
+
+    golden_path = golden_set if golden_set is not None else DEFAULT_GOLDEN_SET
+    output_path = output if output is not None else DEFAULT_REPORT
+    try:
+        report = evaluate(golden_path)
+        write_report(report, output_path)
+    except EvaluationError as exc:
+        typer.secho(f"ER evaluation failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(
+        "ER evaluation: "
+        f"rule precision={report.rule_pairwise_precision:.3f} "
+        f"(floor {report.rule_precision_floor:.3f}); "
+        f"transliteration recall={report.transliteration_pairwise_recall:.3f} "
+        f"(floor {report.transliteration_recall_floor:.3f}); "
+        f"review load={report.review_load_per_1000_mentions:.2f}/1,000 "
+        f"(ceiling {report.review_load_ceiling_per_1000:.2f})"
+    )
+    typer.echo(
+        f"  {report.emitted_candidate_pairs} candidates / {report.mention_count} mentions; "
+        f"distinct emitted={report.distinct_pairs_emitted}; "
+        f"automatic merges={report.automatic_merges}"
+    )
+    typer.echo(f"  report: {output_path}")
+    if not report.passed:
+        typer.secho("ER QUALITY GATE FAILED", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.secho("ER QUALITY GATE PASSED", fg=typer.colors.GREEN)
+
+
 @ingest_app.command("land")
 def ingest_land(
     paths: list[Path] = typer.Argument(..., help="Files or directories to land."),

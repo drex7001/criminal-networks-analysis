@@ -121,6 +121,9 @@ backups/
 # T10 projection snapshot fixture (committed test baseline)
 !tests/snapshots/real_graph.baseline.json
 
+# T26 fictional ER golden set (committed numeric quality-gate input)
+!data/sample/mvp/er-golden-set.json
+
 # T22 workspace: tracked JSON exceptions to *.json above. The lockfile is not
 # optional — `npm ci` in the workspace CI job refuses to run without it (T16c),
 # and openapi.json is the contract the typed client is generated from.

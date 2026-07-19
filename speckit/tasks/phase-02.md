@@ -12,8 +12,8 @@ lettered subtasks keep the global T-numbering stable for pre-authored P3+ files.
 > B are complete** (T17a–T17d, PRs #17–#20; T17–T20, PRs #22–#26).
 > **Milestone C is complete 2026-07-19**: T21 (PRs #27, #29), T22, T23a,
 > T23b, T23c and T24a–T24c are complete. The Phase 2 API surface is complete —
-> no route spec 06 declares for this phase is unimplemented. Milestone D (T25)
-> is next.
+> no route spec 06 declares for this phase is unimplemented. Milestone D T25
+> and T26 are complete; T27 is next.
 
 ## Milestone A — Design pack (⛓ blocks B–D; specs rewritten before code) — **COMPLETE 2026-07-18**
 
@@ -652,6 +652,26 @@ eval results in the same PR.
 AC: CI publishes the numbers and fails below threshold; the seeded distinct
 pair stays unmerged in the full pipeline run; no real-person identifiers in
 CI fixtures.
+
+**COMPLETE 2026-07-20.** `aegis identity evaluate` validates the versioned
+`aegis.er-golden/v1` corpus and calls the same pure identifier matcher and
+Splink scoring boundary as the live producers. The first passing
+`rules-v1`/`splink-v1` run records **1.000 pre-verified precision** (1 TP,
+0 FP), **1.000 seeded transliteration recall** (2/2), and **33.33 candidates
+per 1,000 mentions** (2 candidates over 60 mentions), against the ratified
+0.95 / 0.70 / 50 gates in spec 05 §6. The corpus includes the Sinhala/English
+Nimal pair, a second spelling/transliteration pair, distinct common-name Ruwan
+Silva records with conflicting DOBs, missing optional fields, and deterministic
+hard negatives. Every identifier is an obvious `FIXTURE-ID-*` placeholder and
+the schema refuses any other identifier value.
+
+`make test-er-evaluation` writes `output/er-evaluation.json`, asserts success,
+failure and schema-drift paths, then runs the PostgreSQL full-fixture regression
+proving both Ruwan mentions remain in distinct active entities and that no
+identity decision is written. CI uploads the report on success or failure and
+then runs the complete integration suite. No settings change or ADR was needed:
+T26 ratifies the existing spec 05 floors and `splink-v1` behavior with numeric
+evidence.
 
 **T27. MVP demo runbook + real-corpus smoke** — `docs/MVP_DEMO.md`: scripted
 walkthrough of the full loop **on the T25 fixture** (the ★ gate); separate

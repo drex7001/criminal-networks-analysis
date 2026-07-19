@@ -72,18 +72,53 @@ class RuleRunReport:
 
 
 @dataclass(frozen=True, slots=True)
-class _IdentifierHolder:
-    """One mention reachable from one identifier claim."""
+class IdentifierObservation:
+    """One mention reachable from one identifier claim.
+
+    This value object is shared by the database producer and the T26 golden-set
+    harness.  Keeping pair generation pure makes the evaluation exercise the
+    production matcher rather than a second, test-only implementation.
+    """
 
     mention_id: str
     entity_id: str | None
     claim_id: str
+    predicate: str
+    value: str
     jurisdiction: str | None
     valid_from: date | None
     valid_to: date | None
 
 
-def _windows_overlap(left: _IdentifierHolder, right: _IdentifierHolder) -> bool:
+@dataclass(frozen=True, slots=True)
+class PreverifiedIdentifierPair:
+    """A pair that the deterministic identifier rule places in its top band."""
+
+    mention_a: str
+    mention_b: str
+    predicate: str
+    claim_ids: tuple[str, ...]
+    jurisdictions: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class IdentifierEvaluation:
+    """Pure identifier-rule result, including H-07 suppressions."""
+
+    pairs: tuple[PreverifiedIdentifierPair, ...]
+    suppressed_conflict: int
+
+
+@dataclass(frozen=True, slots=True)
+class MentionKeyObservation:
+    """The fields used by the non-pre-verified same-document name rule."""
+
+    mention_id: str
+    record_id: str
+    norm_key: str
+
+
+def _windows_overlap(left: IdentifierObservation, right: IdentifierObservation) -> bool:
     """Do the two validity windows intersect?  Open ends extend forever."""
     left_end, right_start = left.valid_to, right.valid_from
     right_end, left_start = right.valid_to, left.valid_from
@@ -94,7 +129,7 @@ def _windows_overlap(left: _IdentifierHolder, right: _IdentifierHolder) -> bool:
     return True
 
 
-def _conflict(left: _IdentifierHolder, right: _IdentifierHolder) -> str | None:
+def _conflict(left: IdentifierObservation, right: IdentifierObservation) -> str | None:
     """Why this identifier match must **not** be proposed (H-07).
 
     Identifiers contain errors, fraud, duplicates and reuse, so an exact string
@@ -114,6 +149,76 @@ def _conflict(left: _IdentifierHolder, right: _IdentifierHolder) -> str | None:
     if not _windows_overlap(left, right):
         return "validity_conflict"
     return None
+
+
+def evaluate_preverified_identifiers(
+    observations: Iterable[IdentifierObservation],
+) -> IdentifierEvaluation:
+    """Return the exact pre-verified pairs the production rule would emit.
+
+    Issuer and validity conflicts are suppressed before a candidate can enter
+    the batch-confirmable band (H-07).  Identifier values are used for grouping
+    only and never copied into the result, where a restricted value could leak.
+    """
+
+    groups: dict[tuple[str, str], list[IdentifierObservation]] = defaultdict(list)
+    for observation in observations:
+        value = _identifier_value(observation.value)
+        if value is not None:
+            groups[(observation.predicate, value)].append(observation)
+
+    pairs: list[PreverifiedIdentifierPair] = []
+    suppressed_conflict = 0
+    for (predicate, _), holders in sorted(groups.items()):
+        unique = {holder.mention_id: holder for holder in holders}
+        ordered = [unique[key] for key in sorted(unique)]
+        for index, left in enumerate(ordered):
+            for right in ordered[index + 1 :]:
+                if _conflict(left, right) is not None:
+                    suppressed_conflict += 1
+                    continue
+                mention_a, mention_b = sorted((left.mention_id, right.mention_id))
+                pairs.append(
+                    PreverifiedIdentifierPair(
+                        mention_a=mention_a,
+                        mention_b=mention_b,
+                        predicate=predicate,
+                        claim_ids=tuple(sorted({left.claim_id, right.claim_id})),
+                        jurisdictions=tuple(
+                            sorted(
+                                {
+                                    jurisdiction
+                                    for jurisdiction in (
+                                        left.jurisdiction,
+                                        right.jurisdiction,
+                                    )
+                                    if jurisdiction is not None
+                                }
+                            )
+                        ),
+                    )
+                )
+    return IdentifierEvaluation(
+        pairs=tuple(pairs), suppressed_conflict=suppressed_conflict
+    )
+
+
+def evaluate_same_key_in_document(
+    observations: Iterable[MentionKeyObservation],
+) -> tuple[tuple[str, str], ...]:
+    """Return pairs sharing a normalized key inside one source record."""
+    by_document: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for observation in observations:
+        by_document[(observation.record_id, observation.norm_key)].append(
+            observation.mention_id
+        )
+
+    pairs: list[tuple[str, str]] = []
+    for mention_ids in (by_document[key] for key in sorted(by_document)):
+        ordered = sorted(set(mention_ids))
+        for index, left in enumerate(ordered):
+            pairs.extend((left, right) for right in ordered[index + 1 :])
+    return tuple(pairs)
 
 
 def _active_entity_by_mention(session: Session) -> dict[str, str]:
@@ -238,55 +343,43 @@ def _run_identifier_rules(
     for mention_id, entity_id in entity_by_mention.items():
         mentions_by_entity[entity_id].append(mention_id)
 
-    # (predicate, normalized value) → the mentions asserting it
-    groups: dict[tuple[str, str], list[_IdentifierHolder]] = defaultdict(list)
+    observations: list[IdentifierObservation] = []
     for claim in claims:
-        value = _identifier_value(claim.object_value)
-        if value is None:
+        if not isinstance(claim.object_value, str):
             continue
         for mention_id in _mentions_for_claim(claim, mentions_by_entity):
-            groups[(claim.predicate, value)].append(
-                _IdentifierHolder(
+            observations.append(
+                IdentifierObservation(
                     mention_id=mention_id,
                     entity_id=entity_by_mention.get(mention_id),
                     claim_id=claim.claim_id,
+                    predicate=claim.predicate,
+                    value=claim.object_value,
                     jurisdiction=claim.jurisdiction,
                     valid_from=claim.valid_from,
                     valid_to=claim.valid_to,
                 )
             )
 
-    for (predicate, value), holders in sorted(groups.items()):
-        unique = {holder.mention_id: holder for holder in holders}
-        ordered = [unique[key] for key in sorted(unique)]
-        for index, left in enumerate(ordered):
-            for right in ordered[index + 1 :]:
-                conflict = _conflict(left, right)
-                if conflict is not None:
-                    report.suppressed_conflict += 1
-                    continue
-                emit(
-                    left.mention_id,
-                    right.mention_id,
-                    producer=f"{IDENTIFIER_RULE_PREFIX}{predicate}",
-                    features={
-                        "rule": "identifier_match",
-                        "predicate": predicate,
-                        # The value itself is not copied into features: an
-                        # identifier can be `sensitivity: restricted`, and the
-                        # waterfall is rendered in the review UI (T24a would
-                        # otherwise have to filter inside a JSONB blob).
-                        "claim_ids": sorted({left.claim_id, right.claim_id}),
-                        "jurisdictions": sorted(
-                            {
-                                j
-                                for j in (left.jurisdiction, right.jurisdiction)
-                                if j is not None
-                            }
-                        ),
-                    },
-                    pre_verified=True,
-                )
+    evaluation = evaluate_preverified_identifiers(observations)
+    report.suppressed_conflict += evaluation.suppressed_conflict
+    for pair in evaluation.pairs:
+        emit(
+            pair.mention_a,
+            pair.mention_b,
+            producer=f"{IDENTIFIER_RULE_PREFIX}{pair.predicate}",
+            features={
+                "rule": "identifier_match",
+                "predicate": pair.predicate,
+                # The value itself is not copied into features: an
+                # identifier can be `sensitivity: restricted`, and the
+                # waterfall is rendered in the review UI (T24a would
+                # otherwise have to filter inside a JSONB blob).
+                "claim_ids": list(pair.claim_ids),
+                "jurisdictions": list(pair.jurisdictions),
+            },
+            pre_verified=True,
+        )
 
 
 def _identifier_value(object_value: Any) -> str | None:
@@ -321,28 +414,42 @@ def _run_same_key_in_document(
     query = select(Mention.mention_id, Mention.record_id, Mention.norm_key)
     if record_id is not None:
         query = query.where(Mention.record_id == record_id)
-    by_document: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for mention_id, mention_record, key in session.execute(query):
-        by_document[(mention_record, key)].append(mention_id)
+    observations = [
+        MentionKeyObservation(
+            mention_id=mention_id, record_id=mention_record, norm_key=key
+        )
+        for mention_id, mention_record, key in session.execute(query)
+    ]
+    key_by_pair = {
+        (observation.record_id, observation.mention_id): observation.norm_key
+        for observation in observations
+    }
+    record_by_mention = {
+        observation.mention_id: observation.record_id for observation in observations
+    }
+    for left, right in evaluate_same_key_in_document(observations):
+        record = record_by_mention[left]
+        emit(
+            left,
+            right,
+            producer=SAME_KEY_IN_DOCUMENT_RULE,
+            features={
+                "rule": "same_norm_key_in_document",
+                "norm_key": key_by_pair[(record, left)],
+            },
+            # Never pre-verified: one document can name two different
+            # people who share a common name (spec 05 §3.1).
+            pre_verified=False,
+        )
 
-    for (_, key), mention_ids in sorted(by_document.items()):
-        if len(mention_ids) < 2:
-            continue
-        ordered = sorted(mention_ids)
-        for index, left in enumerate(ordered):
-            for right in ordered[index + 1 :]:
-                emit(
-                    left,
-                    right,
-                    producer=SAME_KEY_IN_DOCUMENT_RULE,
-                    features={
-                        "rule": "same_norm_key_in_document",
-                        "norm_key": key,
-                    },
-                    # Never pre-verified: one document can name two different
-                    # people who share a common name (spec 05 §3.1).
-                    pre_verified=False,
-                )
 
-
-__all__ = ["RuleRunReport", "run_rules"]
+__all__ = [
+    "IdentifierEvaluation",
+    "IdentifierObservation",
+    "MentionKeyObservation",
+    "PreverifiedIdentifierPair",
+    "RuleRunReport",
+    "evaluate_preverified_identifiers",
+    "evaluate_same_key_in_document",
+    "run_rules",
+]

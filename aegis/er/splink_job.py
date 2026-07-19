@@ -31,7 +31,7 @@ from aegis.er.settings import (
     SPLINK_PRODUCER,
     SPLINK_VERSION,
 )
-from aegis.store import ErCandidate, IdentityMembership, IdentityNegativeConstraint
+from aegis.store import ErCandidate, IdentityNegativeConstraint
 
 
 @dataclass
@@ -59,6 +59,16 @@ class SplinkRunReport:
             "graph_snapshot_id": self.graph_snapshot_id,
             "settings_version": self.settings_version,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ScoredPair:
+    """One blocked pair scored by the versioned production model."""
+
+    mention_a: str
+    mention_b: str
+    probability: float
+    features: dict[str, Any]
 
 
 def build_settings():
@@ -204,6 +214,39 @@ def _plain(value: Any) -> Any:
     return item() if callable(item) else value
 
 
+def score_splink(frame: FeatureFrame) -> list[ScoredPair]:
+    """Score a feature frame without persisting candidates.
+
+    The T26 evaluation harness calls this boundary, while :func:`run_splink`
+    consumes the same results for persistence.  Evaluation therefore cannot
+    drift from the comparison levels, blocks, or probabilities used live.
+    """
+    if len(frame) < 2:
+        return []
+
+    import pandas as pd
+    from splink import DuckDBAPI, Linker
+
+    linker = Linker(pd.DataFrame(frame.rows), build_settings(), db_api=DuckDBAPI())
+    predictions = linker.inference.predict(
+        threshold_match_probability=0.0
+    ).as_pandas_dataframe()
+    scored: list[ScoredPair] = []
+    for _, prediction in predictions.iterrows():
+        row = prediction.to_dict()
+        left, right = str(row["unique_id_l"]), str(row["unique_id_r"])
+        mention_a, mention_b = sorted((left, right))
+        scored.append(
+            ScoredPair(
+                mention_a=mention_a,
+                mention_b=mention_b,
+                probability=float(row["match_probability"]),
+                features=_waterfall(row),
+            )
+        )
+    return scored
+
+
 def run_splink(
     session: Session,
     *,
@@ -211,31 +254,18 @@ def run_splink(
     threshold: float = SPLINK_MATCH_THRESHOLD,
 ) -> SplinkRunReport:
     """Score candidate pairs and persist those above threshold."""
-    import pandas as pd
-    from splink import DuckDBAPI, Linker
-
     frame = frame if frame is not None else build_feature_frame(session)
     report = SplinkRunReport(graph_snapshot_id=frame.graph_snapshot_id)
-    if len(frame) < 2:
-        return report
-
-    linker = Linker(
-        pd.DataFrame(frame.rows), build_settings(), db_api=DuckDBAPI()
-    )
-    predictions = linker.inference.predict(
-        threshold_match_probability=0.0
-    ).as_pandas_dataframe()
+    predictions = score_splink(frame)
     report.compared = len(predictions)
 
     entity_by_mention = {row["unique_id"]: row["entity_id"] for row in frame.rows}
     existing = _existing_pairs(session)
     constrained = _constrained_pairs(session)
 
-    for _, prediction in predictions.iterrows():
-        row = prediction.to_dict()
-        left, right = str(row["unique_id_l"]), str(row["unique_id_r"])
-        pair = (left, right) if left < right else (right, left)
-        probability = float(row["match_probability"])
+    for prediction in predictions:
+        pair = (prediction.mention_a, prediction.mention_b)
+        probability = prediction.probability
         if probability < threshold:
             report.below_threshold += 1
             continue
@@ -258,7 +288,7 @@ def run_splink(
             producer_version=SPLINK_VERSION,
             graph_snapshot_id=frame.graph_snapshot_id,
             score=probability,
-            features=_waterfall(row),
+            features=prediction.features,
             # Never pre-verified: the pre-verified band means "confirmable in
             # bulk without reading each one", and a probabilistic score is
             # exactly the thing a human has to read (spec 05 §3.1).
@@ -273,4 +303,10 @@ def run_splink(
     return report
 
 
-__all__ = ["SplinkRunReport", "build_settings", "run_splink"]
+__all__ = [
+    "ScoredPair",
+    "SplinkRunReport",
+    "build_settings",
+    "run_splink",
+    "score_splink",
+]
