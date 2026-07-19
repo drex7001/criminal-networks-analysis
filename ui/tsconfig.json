@@ -5,7 +5,11 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    // `node` is here for e2e/ only: the Playwright specs run in Node and hash
+    // upload bodies with `Buffer`. Application code under src/ never sees a
+    // Node global — it runs in a browser, and reaching for one there is a
+    // mistake this list will not catch, but the bundler will.
+    "types": ["vite/client", "node"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

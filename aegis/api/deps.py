@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from aegis.api.auth import CurrentUser, UserContext
 from aegis.audit import append as append_audit
 from aegis.authz.fga import FGAClient, FGAError
+from aegis.evidence import EvidenceVault
 from aegis.ontology import Ontology
 
 GATE_MARKER = "_aegis_gate"
@@ -40,9 +41,15 @@ def get_fga(request: Request) -> FGAClient | None:
     return request.app.state.fga
 
 
+def get_vault(request: Request) -> EvidenceVault:
+    """The app's evidence vault, built once at startup rather than per request."""
+    return request.app.state.vault
+
+
 DbSession = Annotated[Session, Depends(get_session)]
 OntologyDep = Annotated[Ontology, Depends(get_ontology)]
 FGADep = Annotated[FGAClient | None, Depends(get_fga)]
+VaultDep = Annotated[EvidenceVault, Depends(get_vault)]
 
 
 @dataclass(frozen=True, slots=True)

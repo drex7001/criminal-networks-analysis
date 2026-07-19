@@ -13,10 +13,44 @@ surface, both deleted in the same change (ADR-026).
 - **Graph view** — Cytoscape.js reading `POST /v1/graph/expand`: authenticated,
   authorization-filtered, and bounded. Clicking a node expands from it; clicking
   an edge opens its support summary.
+- **Sources view** (T23a) — land a file or a pasted note with its provenance,
+  read the register of what has landed, and run the derivative + extraction
+  stages per record. Quarantined records show their reason and offer release.
 
-T23a–c add source landing, the review queue, identity adjudication, the full
-provenance panel, and entity search. P4 adds object views, cases and timeline to
-this same app.
+T23b–c add the review queue, identity adjudication, the full provenance panel,
+and entity search. P4 adds object views, cases and timeline to this same app.
+
+## Two rules the screens follow
+
+Worth knowing before adding a third view, because both are easy to break by
+accident:
+
+1. **Only the exceptional state is marked.** A left rail means "this needs you"
+   and nothing else. An ordinary record keeps the same geometry with no colour,
+   so the register stays scannable and a mark still carries information.
+   Quarantine uses the caution bronze — a governance hold is not an alarm, and
+   the failure colour is reserved for a request that failed, never for an
+   entity, a category or a claim (spec 07 §5).
+2. **Monospace means machine identity.** Content hashes and record ids, where
+   character-by-character comparison is the point. Prose stays in the body face.
+   The digest chip is what makes "already landed" believable: you can see the
+   hash coming back is the hash of what you sent.
+
+## Navigation
+
+`src/routing.ts` — path-based, on the History API, no router library. Two views
+do not need one; they do need real URLs, a back button and a path the auth guard
+can return to.
+
+The rule that matters: **anything that moves the URL has to announce it.**
+`pushState` and `replaceState` fire no event. The sign-in callback rewrites the
+URL to the page the user originally asked for, *after* the app has mounted at
+`/auth/callback` — so without `notifyNavigated()` the app renders the fallback
+view at the correct address, which is exactly what the first build did.
+
+A router library arrives with P4's view count. The reason to wait is that it
+would own the history stack and therefore not observe the callback's write, so
+adopting one means re-testing the whole sign-in round trip.
 
 ## Running it
 
@@ -102,12 +136,22 @@ pilot-gate concern (ADR-033 §4), not a P2 one.
 
 ## Testing
 
-`e2e/smoke.spec.ts` runs against the **built** bundle via `vite preview`, under
-a copy of the production CSP, with Keycloak and the API stubbed at the network
-boundary (`e2e/oidc-stub.ts`). `oidc-client-ts` runs its real PKCE state
-machine — only the server's replies are fabricated — so the journey exercises
-every line of ours: the redirect carries a real S256 challenge, the code is
-redeemed, the bearer token reaches the API, and nothing lands in localStorage.
+`e2e/smoke.spec.ts` and `e2e/sources.spec.ts` run against the **built** bundle
+via `vite preview`, under a copy of the production CSP, with Keycloak and the
+API stubbed at the network boundary (`e2e/oidc-stub.ts`, `e2e/ingest-stub.ts`).
+`oidc-client-ts` runs its real PKCE state machine — only the server's replies
+are fabricated — so the journey exercises every line of ours: the redirect
+carries a real S256 challenge, the code is redeemed, the bearer token reaches
+the API, and nothing lands in localStorage.
+
+The ingest stub keeps the service's *rules*, not just its shapes: it is
+content-addressed, so re-sending the same bytes is a no-op and a same-name
+different-body upload is a version conflict. A stub that answered every landing
+with "landed" would let the journey pass while the screen was incapable of
+telling an operator that nothing had happened — which is how the same document
+gets filed twice. It is not a second implementation; it has no vault, no audit
+log and no authorization, and those are proven in
+`tests/integration/test_ingest_routes.py` against the real service.
 
 The full ingest → suggest → review → adjudicate → explore loop against a live
 stack is T25/T27's blocking demo, not this job.

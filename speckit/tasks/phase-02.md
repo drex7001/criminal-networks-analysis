@@ -10,8 +10,8 @@ lettered subtasks keep the global T-numbering stable for pre-authored P3+ files.
 > non-deferrable (ADR-025). The Phase 1 closure addendum (T16a–T16d), which
 > gated Milestones B–D, closed 2026-07-18 (PRs #11–#14). **Milestones A and
 > B are complete** (T17a–T17d, PRs #17–#20; T17–T20, PRs #22–#26).
-> **Milestone C is in progress**: T21 (PRs #27, #29) and T22 are complete;
-> T23a (source landing & extraction UI) is next.
+> **Milestone C is in progress**: T21 (PRs #27, #29), T22 and T23a are
+> complete; T23b (review queue & adjudication UI) is next.
 
 ## Milestone A — Design pack (⛓ blocks B–D; specs rewritten before code) — **COMPLETE 2026-07-18**
 
@@ -389,6 +389,64 @@ quarantine release for supervisors, extraction trigger per record.
 AC: browser e2e — land a fixture PDF and a pasted text from the UI, see
 suggestions appear in the queue; re-upload shows the no-op; quarantined
 fixture shows its reason; every action authorized + audited.
+
+**COMPLETE.** All AC clauses verified: the Playwright journey lands a PDF and a
+pasted note, extracts, and reads the queued count back from `/v1/review-queue`;
+re-uploading identical bytes reports `already_landed` and the register does not
+grow; a same-name/different-bytes upload shows its version-conflict reason and
+offers release instead of extraction. Authorization and audit are proven in
+`tests/integration/test_ingest_routes.py` (29 cases), and the whole chain was
+run against the live stack — real MinIO, real PostgreSQL — through the CLI.
+
+*The derivative stage did not exist.* This is the gap the task's own AC
+exposed: `aegis ingest extract` refused anything that was not `text/*` with
+"produce a text derivative first", and nothing had ever written the
+`derivative` table, so "land a fixture PDF … see suggestions" was
+unreachable. `aegis/ingestion/derivatives.py` implements spec 04 §1 stage 3 —
+written natively rather than by importing `legacy.pipeline.pdf_loader`, because
+the quarantine is replaced, never extended (ADR-023). Two refusals are
+deliberate: an unregistered media type is named rather than guessed at, and a
+PDF with no text layer says it needs OCR rather than running a pass that
+proposes nothing and blames the extractor.
+
+*Synchronous, bounded — ADR-034.* The task said "sync or job status — decided
+here". Synchronous, because P2 has no worker and a job queue buys a status
+model, a retry policy and a stuck-job state in exchange for latency nobody
+feels yet. What makes that safe is two bounds with two meanings that were worth
+not collapsing: `ingest_oversize_bytes` **quarantines** (the artifact lands and
+is withheld — spec 04 §3), `ingest_max_bytes` **refuses** `413` (we will not
+buffer it). Quarantine reasons accumulate, so fixing one and re-landing does
+not reveal the next.
+
+*The fixture PDF is generated, not committed.* `*.pdf` is gitignored repo-wide
+and AGENTS.md forbids committing binaries, so `tests/support/pdf.py` writes a
+real 996-byte PDF — correct xref table, standard-14 font — whose text
+round-trips through pdfplumber exactly. It is readable as source, which is how
+a reviewer checks it against the data-ethics rubric instead of taking a binary
+on trust. ALPHA and BRAVO overlap at one facility and CHARLIE is held
+elsewhere, so "1 suggestion" asserts the co-location *rule* rather than a row
+count.
+
+*`GET /v1/ontology/vocabulary` (specs/06 §2.7)* was added because the intake
+form needs handling codes and source types, and writing either into the bundle
+would have created a second domain artifact that keeps working, and keeps being
+wrong, after the ontology moves (Article XI). Its test compares against the
+loaded ontology, not a literal, for the same reason.
+
+Two defects came from the work's own tests rather than review. The signin
+callback rewrites the URL with `replaceState`, which fires no event — so the
+app, having mounted at `/auth/callback`, rendered the *fallback* view at the
+right address; every sign-in ignored where the user was going. That is the same
+shape as T22's token-ordering bug: state changed outside React's knowledge.
+And the first layout put the outcome banner under a seven-field form, where the
+one piece of feedback this screen exists to give fell below the fold; it now
+sits above the register, next to the record it produced.
+
+The visual rule the screen establishes: **only the exceptional state is
+marked**. A left rail means "this needs you" — the same device already used for
+a graph notice — and an ordinary record keeps the geometry without the colour,
+so a mark still means something. Quarantine uses caution bronze, never a
+failure colour: a governance hold is not an alarm (spec 07 §5).
 
 **T23b. Review queue & adjudication UI** (ADR-031; specs/04 §4) — typed inbox
 (queue + `er_candidate`), filters by kind/producer/status/document;

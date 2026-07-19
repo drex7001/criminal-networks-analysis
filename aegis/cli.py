@@ -526,7 +526,7 @@ def ingest_extract(
     Never writes claims (Article VII): review with `review_suggestion`.
     """
     from aegis.evidence import get_vault
-    from aegis.ingestion import run_semantic_pass, run_structural_pass
+    from aegis.ingestion import IngestionError, ensure_text, run_semantic_pass, run_structural_pass
     from aegis.store import SourceRecord, get_sessionmaker
 
     if producer not in {"structural", "semantic"}:
@@ -546,15 +546,18 @@ def ingest_extract(
                 err=True,
             )
             raise typer.Exit(code=1)
-        if record.media_type and not record.media_type.startswith("text/"):
-            typer.secho(
-                f"cannot extract from media type {record.media_type!r} yet "
-                "(produce a text derivative first)",
-                fg=typer.colors.RED,
-                err=True,
+        try:
+            extraction = ensure_text(session, vault, record=record, operator=actor)
+        except IngestionError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+        if extraction.derivative is not None:
+            typer.echo(
+                f"derivative ({'new' if extraction.created else 'reused'}): "
+                f"{extraction.derivative.derivative_id} via {extraction.tool} "
+                f"{extraction.derivative.tool_version}"
             )
-            raise typer.Exit(code=1)
-        text = vault.get(record.content_hash).decode("utf-8", errors="replace")
+        text = extraction.text
         if producer == "structural":
             suggestions = run_structural_pass(session, record=record, text=text, actor=actor)
         else:

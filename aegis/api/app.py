@@ -32,6 +32,8 @@ from aegis.api.routes import (
     entities,
     evidence,
     graph,
+    ingest,
+    ontology as ontology_routes,
     provenance,
     review,
     sources,
@@ -42,6 +44,7 @@ from aegis.api.workspace import WORKSPACE_DIR, workspace_files
 from aegis.authz.fga import FGAClient, FGAError
 from aegis.authz.outbox import dispatch_forever
 from aegis.config import get_settings
+from aegis.evidence import get_vault
 from aegis.ontology import load
 from aegis.store import get_sessionmaker
 
@@ -87,6 +90,10 @@ def create_app() -> FastAPI:
         ontology_path if ontology_path.is_absolute() else _REPO_ROOT / ontology_path
     )
     app.state.authenticator = OIDCAuthenticator(settings)
+    # Built once: the MinIO adapter opens no connection at construction, so
+    # this stays honest about startup dependencies while saving a client per
+    # request on the ingest path.
+    app.state.vault = get_vault()
     app.state.fga = None
     if settings.fga_store_id:
         with suppress(FGAError):
@@ -111,6 +118,8 @@ def create_app() -> FastAPI:
         audit.router,
         provenance.router,
         graph.router,
+        ingest.router,
+        ontology_routes.router,
     ):
         app.include_router(router, prefix="/v1")
 

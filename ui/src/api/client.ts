@@ -19,6 +19,15 @@ export type GraphEdge = components["schemas"]["GraphEdgeOut"];
 export type GraphNode = components["schemas"]["GraphNodeOut"];
 export type ProjectionStamps = components["schemas"]["ProjectionStampsOut"];
 
+export type LandingResult = components["schemas"]["LandingOut"];
+export type SourceRecord = components["schemas"]["SourceRecordOut"];
+export type SourceSummary = components["schemas"]["SourceOut"];
+export type Derivative = components["schemas"]["DerivativeOut"];
+export type ExtractionResult = components["schemas"]["ExtractionOut"];
+export type LandingOutcome = LandingResult["outcome"];
+export type Suggestion = components["schemas"]["SuggestionOut"];
+export type OntologyVocabulary = components["schemas"]["OntologyVocabularyOut"];
+
 /**
  * RFC 7807 problem detail — what every Aegis error is (spec 06).
  *
@@ -98,4 +107,111 @@ export async function expandGraph(body: {
   categories?: string[];
 }): Promise<GraphView> {
   return unwrap(await api.POST("/v1/graph/expand", { body }));
+}
+
+/* ── ingestion (T23a) ──────────────────────────────────────────────────── */
+
+/**
+ * Multipart serializer for the file-landing route.
+ *
+ * Empty strings are dropped rather than sent: an untouched optional input
+ * would otherwise land as `source_url: ""`, recording "collected from nowhere"
+ * as if the operator had asserted it. Absent and empty are different claims
+ * about provenance, and only one of them is true here.
+ */
+function multipart(body: Record<string, unknown>): FormData {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null || value === "") continue;
+    form.append(key, value as string | Blob);
+  }
+  return form;
+}
+
+export interface LandFileFields {
+  file: File;
+  source_id?: string;
+  handling_code?: string;
+  source_url?: string;
+  collection_policy?: string;
+  notes?: string;
+}
+
+export async function landFile(fields: LandFileFields): Promise<LandingResult> {
+  return unwrap(
+    await api.POST("/v1/ingest/file", {
+      // `openapi-typescript` types a `format: binary` field as `string`; the
+      // request is multipart, so the value has to be the File itself. The cast
+      // is confined to this line rather than loosening the operation's type.
+      body: fields as unknown as components["schemas"]["Body_landFile"],
+      bodySerializer: multipart,
+    }),
+  );
+}
+
+export async function landText(
+  body: components["schemas"]["LandTextIn"],
+): Promise<LandingResult> {
+  return unwrap(await api.POST("/v1/ingest/text", { body }));
+}
+
+export async function listSourceRecords(params?: {
+  status?: string;
+  source_id?: string;
+}): Promise<SourceRecord[]> {
+  return unwrap(await api.GET("/v1/source-records", { params: { query: params } }));
+}
+
+export async function listSources(): Promise<SourceSummary[]> {
+  return unwrap(await api.GET("/v1/sources", {}));
+}
+
+export async function createSource(
+  body: components["schemas"]["SourceIn"],
+): Promise<SourceSummary> {
+  return unwrap(await api.POST("/v1/sources", { body }));
+}
+
+export async function listDerivatives(recordId: string): Promise<Derivative[]> {
+  return unwrap(
+    await api.GET("/v1/source-records/{record_id}/derivatives", {
+      params: { path: { record_id: recordId } },
+    }),
+  );
+}
+
+export async function extractRecord(
+  recordId: string,
+  body: components["schemas"]["ExtractIn"],
+): Promise<ExtractionResult> {
+  return unwrap(
+    await api.POST("/v1/source-records/{record_id}/extract", {
+      params: { path: { record_id: recordId } },
+      body,
+    }),
+  );
+}
+
+export async function listSuggestions(params: {
+  record?: string;
+  status?: string;
+}): Promise<Suggestion[]> {
+  return unwrap(await api.GET("/v1/review-queue", { params: { query: params } }));
+}
+
+/**
+ * Handling codes and source types come from the server, never from a constant
+ * in this bundle: the ontology is the single domain artifact (Article XI), and
+ * a hard-coded picker is a second one that stays wrong silently.
+ */
+export async function getVocabulary(): Promise<OntologyVocabulary> {
+  return unwrap(await api.GET("/v1/ontology/vocabulary", {}));
+}
+
+export async function releaseRecord(recordId: string): Promise<SourceRecord> {
+  return unwrap(
+    await api.POST("/v1/source-records/{record_id}/release", {
+      params: { path: { record_id: recordId } },
+    }),
+  );
 }

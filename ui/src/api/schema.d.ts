@@ -358,6 +358,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ingest/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Land Upload
+         * @description Land an uploaded artifact (spec 04 §1 stage 1).
+         */
+        post: operations["landFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ingest/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Land Text
+         * @description Land pasted text (spec 04 §1 — "File / paste / curated entry").
+         */
+        post: operations["landText"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ontology/vocabulary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vocabulary
+         * @description Closed vocabularies a caller needs to compose a valid request.
+         *
+         *     Authenticated but unrestricted by role: this is the shape of the domain,
+         *     not anything asserted about anyone in it.
+         */
+        get: operations["getOntologyVocabulary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/review-queue": {
         parameters: {
             query?: never;
@@ -409,6 +472,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/source-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Records
+         * @description Landed records the caller may see, newest first.
+         *
+         *     Rows above the caller's clearance are absent, not counted (specs/03 §4).
+         */
+        get: operations["listSourceRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/source-records/{record_id}": {
         parameters: {
             query?: never;
@@ -420,6 +505,49 @@ export interface paths {
         get: operations["getSourceRecord"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/source-records/{record_id}/derivatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Derivatives
+         * @description The transformations recorded for a record (spec 04 §1 stage 3).
+         */
+        get: operations["listDerivatives"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/source-records/{record_id}/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extract Record
+         * @description Run an extraction pass over a record → review-queue suggestions.
+         *
+         *     Writes no claims (Article VII): everything produced here waits for
+         *     ``review_suggestion``.
+         */
+        post: operations["extractRecord"];
         delete?: never;
         options?: never;
         head?: never;
@@ -501,6 +629,27 @@ export interface components {
             resource_id: string | null;
             /** Resource Type */
             resource_type: string | null;
+        };
+        /** Body_landFile */
+        Body_landFile: {
+            /** Collection Policy */
+            collection_policy?: string | null;
+            /**
+             * File
+             * @description The artifact to land.
+             */
+            file: string;
+            /**
+             * Handling Code
+             * @default open
+             */
+            handling_code?: string;
+            /** Notes */
+            notes?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /** Source Url */
+            source_url?: string | null;
         };
         /** CaseIn */
         CaseIn: {
@@ -685,6 +834,33 @@ export interface components {
             /** To Actor */
             to_actor: string;
         };
+        /**
+         * DerivativeOut
+         * @description A recorded transformation (spec 04 §1 stage 3).
+         */
+        DerivativeOut: {
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Derivative Id */
+            derivative_id: string;
+            /** Kind */
+            kind: string;
+            /** Operator */
+            operator: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Tool */
+            tool: string;
+            /** Tool Version */
+            tool_version: string;
+        };
         /** EntityDetail */
         EntityDetail: {
             /** Claims By Predicate */
@@ -748,6 +924,36 @@ export interface components {
             handling_code: string;
             /** Record Id */
             record_id: string | null;
+        };
+        /** ExtractIn */
+        ExtractIn: {
+            /**
+             * Mock
+             * @description semantic only: run the offline deterministic extractor instead of a model. Output is labelled `model: mock` in producer_meta, so a suggestion never misrepresents what produced it.
+             * @default false
+             */
+            mock?: boolean;
+            /**
+             * Producer
+             * @default structural
+             * @enum {string}
+             */
+            producer?: "structural" | "semantic";
+        };
+        /**
+         * ExtractionOut
+         * @description What one extraction run did — suggestions only, never claims (Article VII).
+         */
+        ExtractionOut: {
+            derivative: components["schemas"]["DerivativeOut"] | null;
+            /** Derivative Created */
+            derivative_created: boolean;
+            /** Producer */
+            producer: string;
+            /** Record Id */
+            record_id: string;
+            /** Suggestions Created */
+            suggestions_created: number;
         };
         /**
          * GradingOut
@@ -925,6 +1131,54 @@ export interface components {
             result_revision_id: number;
         };
         /**
+         * LandTextIn
+         * @description A pasted note (spec 04 §1 — "File / paste / curated entry").
+         *
+         *     ``filename`` is not decoration: the ingest key is
+         *     ``sha256(source_system | filename | content hash)``, so it is half of what
+         *     makes re-pasting the same text under the same name a no-op, and it is what
+         *     an operator will recognise the record by later.
+         */
+        LandTextIn: {
+            /** Collection Policy */
+            collection_policy?: string | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Handling Code
+             * @default open
+             */
+            handling_code?: string;
+            /** Notes */
+            notes?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /** Source Time */
+            source_time?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * LandingOut
+         * @description ``outcome`` is what *this request* did; ``record.status`` is what the
+         *     record *is*.
+         *
+         *     They come apart on the case that matters: re-sending an artifact that
+         *     landed quarantined is ``already_landed`` over a record whose status is
+         *     ``quarantined``. Collapsing them would let a re-upload read as a fresh
+         *     quarantine, or a no-op hide one.
+         */
+        LandingOut: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "landed" | "already_landed" | "quarantined";
+            record: components["schemas"]["SourceRecordOut"];
+        };
+        /**
          * MentionOut
          * @description The words a claim's argument came from (ADR-029).
          */
@@ -945,6 +1199,18 @@ export interface components {
             record_id: string;
             /** Script */
             script: string | null;
+        };
+        /**
+         * OntologyVocabularyOut
+         * @description Closed vocabularies, served so no client hand-writes them (Article XI).
+         */
+        OntologyVocabularyOut: {
+            /** Handling Codes */
+            handling_codes: string[];
+            /** Source Types */
+            source_types: string[];
+            /** Version */
+            version: string;
         };
         /**
          * ProjectionStampsOut
@@ -1822,6 +2088,110 @@ export interface operations {
             };
         };
     };
+    landFile: {
+        parameters: {
+            query?: {
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_landFile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LandingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    landText: {
+        parameters: {
+            query?: {
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LandTextIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LandingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getOntologyVocabulary: {
+        parameters: {
+            query?: {
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyVocabularyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     listSuggestions: {
         parameters: {
             query?: {
@@ -1935,6 +2305,41 @@ export interface operations {
             };
         };
     };
+    listSourceRecords: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                source_id?: string | null;
+                limit?: number;
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRecordOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     getSourceRecord: {
         parameters: {
             query?: {
@@ -1956,6 +2361,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceRecordOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listDerivatives: {
+        parameters: {
+            query?: {
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DerivativeOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extractRecord: {
+        parameters: {
+            query?: {
+                /** @description Reason for access */
+                purpose?: string | null;
+            };
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtractIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtractionOut"];
                 };
             };
             /** @description Validation Error */
