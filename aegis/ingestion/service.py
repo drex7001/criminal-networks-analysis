@@ -100,12 +100,20 @@ def land_bytes(
     notes: str | None = None,
     handling_code: str = "open",
     source_time: datetime | None = None,
+    oversize_bytes: int | None = None,
 ) -> LandingResult:
     """Raw landing (spec 04 §1 stage 1) in one transaction.
 
     Returns the (possibly pre-existing) record.  Same name + different bytes
-    quarantines the new record as a version conflict.
+    quarantines the new record as a version conflict; so does an artifact past
+    the configured size bound (spec 04 §3).  Quarantine keeps the bytes and
+    withholds their *use* — deciding an artifact is too big to exist is not a
+    call this layer gets to make.
     """
+    if oversize_bytes is None:
+        from aegis.config import get_settings
+
+        oversize_bytes = get_settings().ingest_oversize_bytes
     envelope = ProvenanceEnvelope(
         source_system=source_system,
         original_filename=original_filename,
@@ -140,7 +148,19 @@ def land_bytes(
                 SourceRecord.content_hash != stored.content_hash,
             )
         ).all()
-        quarantined = bool(siblings)
+        # Every failed check is reported, not just the first: an operator who
+        # fixes one reason and re-lands should not discover the next one.
+        reasons: list[str] = []
+        if siblings:
+            reasons.append(
+                f"version conflict: {len(siblings)} earlier record(s) of "
+                f"{original_filename!r} with different content"
+            )
+        if len(data) > oversize_bytes:
+            reasons.append(
+                f"oversized: {len(data)} bytes exceeds the {oversize_bytes}-byte bound"
+            )
+        quarantined = bool(reasons)
         record = SourceRecord(
             record_id=new_id("rec"),
             source_id=source.source_id,
@@ -151,12 +171,7 @@ def land_bytes(
             source_time=source_time,
             handling_code=handling_code,
             status="quarantined" if quarantined else "landed",
-            quarantine_reason=(
-                f"version conflict: {len(siblings)} earlier record(s) of "
-                f"{original_filename!r} with different content"
-                if quarantined
-                else None
-            ),
+            quarantine_reason="; ".join(reasons) if reasons else None,
             provenance=envelope.model_dump(mode="json", exclude_none=True),
         )
         session.add(record)
@@ -174,7 +189,9 @@ def land_bytes(
             detail={
                 "ingest_key": ingest_key,
                 "content_hash": stored.content_hash,
+                "size_bytes": len(data),
                 "quarantined": quarantined,
+                "quarantine_reasons": reasons,
             },
         )
         return LandingResult(record, created=True, quarantined=quarantined)

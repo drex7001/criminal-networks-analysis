@@ -4,7 +4,9 @@ Status: implemented in Phase 1 — **§4 updated 2026-07-18 by P2 T17c for ADR-0
 (typed suggestion envelope): producers emit typed kinds, acceptance dispatches
 through the declared action, and the review inbox is a UI composition over
 `review_queue` + `er_candidate`. Where this text conflicts with ADR-031, the ADR
-wins.** · Constitutional basis: Articles I, IV, VII · GOAL.md §9 · ADR-027, ADR-031
+wins.** · **§1 stage 3 and §3 updated 2026-07-19 by P2 T23a (ADR-034): the
+derivative stage is implemented, and the pipeline is reachable over HTTP.** ·
+Constitutional basis: Articles I, IV, VII · GOAL.md §9 · ADR-027, ADR-031, ADR-034
 
 The existing ingestion stack (`pipeline/ingest.py`, `pdf_ingest.py`, `transcribe.py`,
 structural/semantic passes) is kept — this spec changes **where its outputs land and
@@ -56,13 +58,51 @@ Extends the current provenance headers; stored in `source_record.provenance`:
 `ingest_key = sha256(source_system | original_filename_or_id | content_hash)` —
 re-ingesting the same artifact is a no-op (GOAL.md §9.3).
 
+### Derivative stage (T23a)
+
+`aegis.ingestion.derivatives.ensure_text` is stage 3 for the text path:
+`application/pdf` → pdfplumber → a `derivative` row (tool, version, params,
+output content hash) plus the text itself in the vault; `text/*` records need
+no derivative and get none, because a row for the identity function lengthens
+the provenance chain without making it truer. Anything else is refused by name
+(`UnsupportedMediaType`), and a PDF with no text layer is refused as needing
+OCR rather than reported as an extraction that proposed nothing.
+
+Re-running the stage over the same record with the same tool **reuses** the
+existing row (ADR-034 §4); `params` is part of that key, so changing how the
+text is produced produces a new derivative rather than silently reusing the
+old one. Audio/video → transcript stays unimplemented; `transcribe.py` is
+still prototype-only.
+
 ## 3. Quarantine (GOAL.md §9.5, scaled)
 
 `source_record.status='quarantined'` + reason when: unparseable/corrupt file,
-media-type mismatch, missing provenance fields, oversized anomaly (> configured
-bound), or duplicate ingest_key with *different* content hash (version conflict —
-needs a human). Quarantined records are listed by an API route; release/reject are
-audited actions.
+media-type mismatch, missing provenance fields, oversized anomaly (>
+`AEGIS_INGEST_OVERSIZE_BYTES`, default 25 MiB), or duplicate ingest_key with
+*different* content hash (version conflict — needs a human). Quarantined records
+are listed by an API route; release/reject are audited actions.
+
+Reasons **accumulate** rather than short-circuit: an artifact that is both a
+version conflict and oversized reports both, so an operator who fixes one and
+re-lands does not then discover the next (ADR-034 §3).
+
+A separate, larger bound (`AEGIS_INGEST_MAX_BYTES`, default 100 MiB) is a
+**transport** ceiling, not a governance rule: landing buffers a body to hash
+it, so a request above it is refused `413` and nothing is stored. Quarantine
+means "kept and withheld"; this means "not accepted at all", and the two are
+deliberately different numbers with different meanings (ADR-034 §2).
+
+### HTTP surface (T23a)
+
+`POST /v1/ingest/file` (multipart) and `POST /v1/ingest/text` (pasted) land
+through the same `land_bytes`, so the CLI and the workspace share one set of
+rules. The reply separates **what the request did** (`outcome`:
+`landed` / `already_landed` / `quarantined`) from **what the record is**
+(`record.status`) — they come apart when re-sending something that landed
+quarantined. `POST /v1/source-records/{id}/extract` runs the derivative stage
+and one producer synchronously; `GET /v1/source-records` and
+`…/{id}/derivatives` report state. Landing above the caller's own clearance is
+refused: it would create evidence the operator can never afterwards read.
 
 ## 4. Extraction passes → suggested claims
 
@@ -120,5 +160,10 @@ audited actions.
 
 - Phase 1: `aegis ingest <path|dir>` (wraps existing `pipeline.ingest`) + `aegis
   ingest status`.
+- Phase 2 (T23a): `aegis ingest extract` runs the derivative stage first, so a
+  PDF is extractable from the CLI and the workspace alike; the same operations
+  are reachable over HTTP (§3).
 - Later (Dagster trigger, plan §2): scheduled polls of RSS/press sources, webhooks —
-  each a `source` with its own reliability grading.
+  each a `source` with its own reliability grading. This is also where a job
+  model earns its complexity: a scheduled poll has no request to hold open,
+  which is why ADR-034 keeps P2 synchronous and revisits it here.

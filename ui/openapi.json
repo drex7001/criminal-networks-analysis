@@ -118,6 +118,70 @@
         "title": "AuditOut",
         "type": "object"
       },
+      "Body_landFile": {
+        "properties": {
+          "collection_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Policy"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The artifact to land.",
+            "title": "File",
+            "type": "string"
+          },
+          "handling_code": {
+            "default": "open",
+            "title": "Handling Code",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_landFile",
+        "type": "object"
+      },
       "CaseIn": {
         "properties": {
           "handling_code": {
@@ -740,6 +804,57 @@
         "title": "CustodyEventIn",
         "type": "object"
       },
+      "DerivativeOut": {
+        "description": "A recorded transformation (spec 04 §1 stage 3).",
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "derivative_id": {
+            "title": "Derivative Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "tool_version": {
+            "title": "Tool Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "derivative_id",
+          "kind",
+          "tool",
+          "tool_version",
+          "params",
+          "content_hash",
+          "operator",
+          "created_at"
+        ],
+        "title": "DerivativeOut",
+        "type": "object"
+      },
       "EntityDetail": {
         "properties": {
           "claims_by_predicate": {
@@ -941,6 +1056,67 @@
           "created_at"
         ],
         "title": "EvidenceOut",
+        "type": "object"
+      },
+      "ExtractIn": {
+        "properties": {
+          "mock": {
+            "default": false,
+            "description": "semantic only: run the offline deterministic extractor instead of a model. Output is labelled `model: mock` in producer_meta, so a suggestion never misrepresents what produced it.",
+            "title": "Mock",
+            "type": "boolean"
+          },
+          "producer": {
+            "default": "structural",
+            "enum": [
+              "structural",
+              "semantic"
+            ],
+            "title": "Producer",
+            "type": "string"
+          }
+        },
+        "title": "ExtractIn",
+        "type": "object"
+      },
+      "ExtractionOut": {
+        "description": "What one extraction run did — suggestions only, never claims (Article VII).",
+        "properties": {
+          "derivative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DerivativeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "derivative_created": {
+            "title": "Derivative Created",
+            "type": "boolean"
+          },
+          "producer": {
+            "title": "Producer",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "suggestions_created": {
+            "title": "Suggestions Created",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "record_id",
+          "producer",
+          "suggestions_created",
+          "derivative",
+          "derivative_created"
+        ],
+        "title": "ExtractionOut",
         "type": "object"
       },
       "GradingOut": {
@@ -1419,6 +1595,112 @@
         "title": "IdentityDecisionOut",
         "type": "object"
       },
+      "LandTextIn": {
+        "description": "A pasted note (spec 04 §1 — \"File / paste / curated entry\").\n\n``filename`` is not decoration: the ingest key is\n``sha256(source_system | filename | content hash)``, so it is half of what\nmakes re-pasting the same text under the same name a no-op, and it is what\nan operator will recognise the record by later.",
+        "properties": {
+          "collection_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Policy"
+          },
+          "filename": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "handling_code": {
+            "default": "open",
+            "title": "Handling Code",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Time"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "text": {
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "filename"
+        ],
+        "title": "LandTextIn",
+        "type": "object"
+      },
+      "LandingOut": {
+        "description": "``outcome`` is what *this request* did; ``record.status`` is what the\nrecord *is*.\n\nThey come apart on the case that matters: re-sending an artifact that\nlanded quarantined is ``already_landed`` over a record whose status is\n``quarantined``. Collapsing them would let a re-upload read as a fresh\nquarantine, or a no-op hide one.",
+        "properties": {
+          "outcome": {
+            "enum": [
+              "landed",
+              "already_landed",
+              "quarantined"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/SourceRecordOut"
+          }
+        },
+        "required": [
+          "outcome",
+          "record"
+        ],
+        "title": "LandingOut",
+        "type": "object"
+      },
       "MentionOut": {
         "description": "The words a claim's argument came from (ADR-029).",
         "properties": {
@@ -1494,6 +1776,36 @@
           "language"
         ],
         "title": "MentionOut",
+        "type": "object"
+      },
+      "OntologyVocabularyOut": {
+        "description": "Closed vocabularies, served so no client hand-writes them (Article XI).",
+        "properties": {
+          "handling_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Handling Codes",
+            "type": "array"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Types",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "handling_codes",
+          "source_types"
+        ],
+        "title": "OntologyVocabularyOut",
         "type": "object"
       },
       "ProjectionStampsOut": {
@@ -3495,6 +3807,197 @@
         ]
       }
     },
+    "/v1/ingest/file": {
+      "post": {
+        "description": "Land an uploaded artifact (spec 04 §1 stage 1).",
+        "operationId": "landFile",
+        "parameters": [
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_landFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Land Upload",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/v1/ingest/text": {
+      "post": {
+        "description": "Land pasted text (spec 04 §1 — \"File / paste / curated entry\").",
+        "operationId": "landText",
+        "parameters": [
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LandTextIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LandingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Land Text",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/v1/ontology/vocabulary": {
+      "get": {
+        "description": "Closed vocabularies a caller needs to compose a valid request.\n\nAuthenticated but unrestricted by role: this is the shape of the domain,\nnot anything asserted about anyone in it.",
+        "operationId": "getOntologyVocabulary",
+        "parameters": [
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyVocabularyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vocabulary",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
     "/v1/review-queue": {
       "get": {
         "operationId": "listSuggestions",
@@ -3780,6 +4283,110 @@
         ]
       }
     },
+    "/v1/source-records": {
+      "get": {
+        "description": "Landed records the caller may see, newest first.\n\nRows above the caller's clearance are absent, not counted (specs/03 §4).",
+        "operationId": "listSourceRecords",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceRecordOut"
+                  },
+                  "title": "Response Listsourcerecords",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Source Records",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
     "/v1/source-records/{record_id}": {
       "get": {
         "operationId": "getSourceRecord",
@@ -3842,6 +4449,152 @@
         "summary": "Get Source Record",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/v1/source-records/{record_id}/derivatives": {
+      "get": {
+        "description": "The transformations recorded for a record (spec 04 §1 stage 3).",
+        "operationId": "listDerivatives",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DerivativeOut"
+                  },
+                  "title": "Response Listderivatives",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Derivatives",
+        "tags": [
+          "ingestion"
+        ]
+      }
+    },
+    "/v1/source-records/{record_id}/extract": {
+      "post": {
+        "description": "Run an extraction pass over a record → review-queue suggestions.\n\nWrites no claims (Article VII): everything produced here waits for\n``review_suggestion``.",
+        "operationId": "extractRecord",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reason for access",
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Reason for access",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Extract Record",
+        "tags": [
+          "ingestion"
         ]
       }
     },

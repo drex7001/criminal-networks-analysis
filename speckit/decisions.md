@@ -956,3 +956,51 @@ dispositions the 2026-07 review findings tagged to its phase in the charters.
 
 **Revisit when.** Phase 2's exit review — measured against the recomposed
 charter, under ADR-025 gate semantics.
+
+---
+
+## ADR-034: Ingestion runs inside the request, bounded by two limits; the job model waits for the connector path
+
+**Context.** T23a had to decide whether landing, the derivative stage and
+extraction run synchronously or as tracked jobs (the task says "sync or job
+status — decided here"). A job queue is the reflex answer for anything that
+touches a file, and it is not free: it buys a status model, a worker
+deployment, a retry policy, and a permanent new failure mode — work that is
+neither done nor failed — in exchange for latency an operator only feels once
+the work outlasts a request. Phase 2 has no worker; the scheduled-connector
+trigger that would need one is plan §2, still unbuilt.
+
+The real hazard in the synchronous shape is not slowness, it is
+unboundedness: landing must buffer a body to hash it, so an unbounded upload
+is memory exhaustion, and an unbounded document is a request that never
+returns.
+
+**Decision.**
+
+1. Landing, the derivative stage and extraction all run **inside the
+   request**, in one transaction, and return what happened.
+2. Two configured bounds, with two different meanings — collapsing them into
+   one number was the mistake worth avoiding:
+   - `AEGIS_INGEST_OVERSIZE_BYTES` (default 25 MiB) is **governance**. Past
+     it, the artifact still lands and is **quarantined** as spec 04 §3's
+     "oversized anomaly". The bytes are kept and their *use* is withheld;
+     deciding an artifact is too big to exist is not the pipeline's call.
+   - `AEGIS_INGEST_MAX_BYTES` (default 100 MiB) is **transport**. Past it the
+     request is refused `413` and nothing is stored, because we will not
+     buffer it. This is a limit on us, not a judgement about the evidence.
+3. Quarantine reasons **accumulate**: an artifact that is both a version
+   conflict and oversized reports both, so fixing one and re-landing does not
+   reveal the next one.
+4. The derivative stage is keyed by *(parent record, kind, tool, tool version,
+   params)* — `params` included, so changing how pages are joined produces a
+   new derivative instead of silently reusing text we would no longer produce.
+
+**Consequences.** No worker, no job table, no stuck-job state in P2. A
+document large enough to outlast a request is a quarantine, not a timeout.
+Extraction latency is the operator's to see, which is honest while the corpus
+is small and will stop being acceptable as it grows.
+
+**Revisit when.** The scheduled-connector / watch-folder path lands (plan §2)
+— a poll has no request to hold open, so that is where a job model first earns
+its complexity, and it should be introduced there rather than retrofitted
+here.

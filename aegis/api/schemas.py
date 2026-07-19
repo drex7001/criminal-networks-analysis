@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -116,6 +116,84 @@ class SourceRecordOut(BaseModel):
     handling_code: str
     received_at: datetime
     provenance: dict[str, Any]
+
+
+class OntologyVocabularyOut(BaseModel):
+    """Closed vocabularies, served so no client hand-writes them (Article XI)."""
+
+    version: str
+    handling_codes: list[str]
+    source_types: list[str]
+
+
+class LandTextIn(BaseModel):
+    """A pasted note (spec 04 §1 — "File / paste / curated entry").
+
+    ``filename`` is not decoration: the ingest key is
+    ``sha256(source_system | filename | content hash)``, so it is half of what
+    makes re-pasting the same text under the same name a no-op, and it is what
+    an operator will recognise the record by later.
+    """
+
+    text: str = Field(min_length=1)
+    filename: str = Field(min_length=1, max_length=200)
+    source_id: str | None = None
+    handling_code: str = "open"
+    source_url: str | None = None
+    collection_policy: str | None = None
+    notes: str | None = None
+    source_time: datetime | None = None
+
+
+class LandingOut(BaseModel):
+    """``outcome`` is what *this request* did; ``record.status`` is what the
+    record *is*.
+
+    They come apart on the case that matters: re-sending an artifact that
+    landed quarantined is ``already_landed`` over a record whose status is
+    ``quarantined``. Collapsing them would let a re-upload read as a fresh
+    quarantine, or a no-op hide one.
+    """
+
+    outcome: Literal["landed", "already_landed", "quarantined"]
+    record: SourceRecordOut
+
+
+class DerivativeOut(BaseModel):
+    """A recorded transformation (spec 04 §1 stage 3)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    derivative_id: str
+    kind: str
+    tool: str
+    tool_version: str
+    params: dict[str, Any]
+    content_hash: str
+    operator: str
+    created_at: datetime
+
+
+class ExtractIn(BaseModel):
+    producer: Literal["structural", "semantic"] = "structural"
+    mock: bool = Field(
+        default=False,
+        description=(
+            "semantic only: run the offline deterministic extractor instead of a "
+            "model. Output is labelled `model: mock` in producer_meta, so a "
+            "suggestion never misrepresents what produced it."
+        ),
+    )
+
+
+class ExtractionOut(BaseModel):
+    """What one extraction run did — suggestions only, never claims (Article VII)."""
+
+    record_id: str
+    producer: str
+    suggestions_created: int
+    derivative: DerivativeOut | None
+    derivative_created: bool
 
 
 class SuggestionOut(BaseModel):

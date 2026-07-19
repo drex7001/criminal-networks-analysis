@@ -1,12 +1,19 @@
 import { useAuth } from "react-oidc-context";
 
+import { ROUTES, type Route, navigate } from "../routing";
+
 /**
  * The P2 skeleton of spec 07 §4: top bar plus active view. No case column — the
  * case switcher, nav rail and detail panes arrive in P4 with the objects they
  * navigate; a nav bar full of dead links would be a promise the product does
  * not keep.
  */
-export function Shell({ children }: { children: React.ReactNode }) {
+const VIEWS: Array<{ route: Route; label: string }> = [
+  { route: ROUTES.sources, label: "Sources" },
+  { route: ROUTES.graph, label: "Graph" },
+];
+
+export function Shell({ route, children }: { route: Route; children: React.ReactNode }) {
   const auth = useAuth();
   const profile = auth.user?.profile;
   const roles = extractRoles(auth.user?.profile);
@@ -19,9 +26,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <span className="muted">investigation workspace</span>
         </div>
         <nav className="shell__nav" aria-label="Views">
-          <a className="shell__link shell__link--active" href="/graph">
-            Graph
-          </a>
+          {VIEWS.map((view) => (
+            <a
+              key={view.route}
+              // A real href, so the link opens in a new tab and shows its
+              // target in the status bar; the click is intercepted only for
+              // the same-document case.
+              href={view.route}
+              className={`shell__link${route === view.route ? " shell__link--active" : ""}`}
+              aria-current={route === view.route ? "page" : undefined}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                navigate(view.route);
+              }}
+            >
+              {view.label}
+            </a>
+          ))}
         </nav>
         <div className="shell__user">
           <span data-testid="username">

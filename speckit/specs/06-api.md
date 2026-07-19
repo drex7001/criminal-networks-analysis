@@ -97,9 +97,13 @@ one audit shape.
 | Route | R | F | Notes / filters | Limits | Tests |
 |---|---|---|---|---|---|
 | `POST /v1/sources` · `GET /v1/sources` | analyst | — | cursor on list | — | matrix suite |
-| `POST /v1/ingest` (multipart) | analyst, investigator | — | lands, returns record_id + status; idempotent re-upload reports "already landed" | body 100 MiB | `test_ingestion.py` |
+| `POST /v1/ingest/file` (multipart) | analyst, investigator | — | lands; `outcome` (`landed`/`already_landed`/`quarantined`) is what the *request* did, `record.status` is what the *record* is — they differ when re-sending something already quarantined | body `AEGIS_INGEST_MAX_BYTES`, default 100 MiB → `413` | `test_ingest_routes.py` (T23a) |
+| `POST /v1/ingest/text` (JSON) | analyst, investigator | — | pasted entry, same rules and same `land_bytes`. Split from the multipart route rather than one route with two optional bodies: they carry different inputs, and "exactly one of" is a validation rule the type system can express as two operations instead | as above | `test_ingest_routes.py` |
+| `GET /v1/source-records` | analyst | — | handling-filtered; rows above clearance are **absent, not counted** (§1 default 4). Deterministic order (`received_at desc, record_id desc`) so T24c's cursor is stable | limit ≤ 200 | `test_ingest_routes.py` |
 | `GET /v1/source-records/{id}` | — | — | provenance envelope, derivatives, quarantine state | — | matrix suite |
-| `POST /v1/source-records/{id}/release` | supervisor | — | un-quarantine, audited | — | `test_ingestion.py` |
+| `GET /v1/source-records/{id}/derivatives` | analyst | — | recorded transformations (tool, version, params, output hash); 404 when the record is above clearance | — | `test_ingest_routes.py` |
+| `POST /v1/source-records/{id}/extract` | analyst | — | derivative stage + one producer, **synchronously** (ADR-034); `409` on a quarantined record, `422` on a media type with no tool. Writes suggestions only, never claims (Article VII) | one producer per call | `test_ingest_routes.py` |
+| `POST /v1/source-records/{id}/release` | supervisor | — | un-quarantine, audited | — | `test_ingest_routes.py` |
 
 ### 2.4 Evidence & custody
 
@@ -129,7 +133,13 @@ one audit shape.
 | `POST /v1/projections/rebuild` | admin | — | **controlled job/admin action only** (B-14): full rebuild is a DoS and staleness risk, not general analyst capability | 1 concurrent | `test_projections.py`, matrix suite |
 | ~~`GET /api/graph`, `/api/stats`, `/api/cells`, `/api/query/{name}`~~ | — | — | **deleted at T22** (ADR-026) with the `public_route` marker and the legacy explorer. `/api` stays a reserved path prefix so a caller of a retired route gets 404, not the workspace's HTML | — | `test_route_gating.py`, `test_workspace_serving.py` |
 
-### 2.7 Audit
+### 2.7 Ontology vocabulary
+
+| Route | R | F | Notes / filters | Limits | Tests |
+|---|---|---|---|---|---|
+| `GET /v1/ontology/vocabulary` | — | — | handling codes (**ordered** — clearance is an index into the list) and source types, so no client hard-codes a domain vocabulary (Article XI). Authenticated but unrestricted by role: it is the shape of the domain, not an assertion about anyone in it. Superseded in P4 by the generated `ui_meta.json` (spec 07 §3) | — | `test_ingest_routes.py`, `test_openapi.py` |
+
+### 2.8 Audit
 
 | Route | R | F | Notes / filters | Limits | Tests |
 |---|---|---|---|---|---|

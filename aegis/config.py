@@ -88,6 +88,26 @@ class Settings(BaseSettings):
     )
     vault_local_path: str = Field(default=".aegis/vault", validation_alias="AEGIS_VAULT_PATH")
 
+    # Two bounds with two different meanings (T23a).
+    #
+    # `oversize` is spec 04 §3's "oversized anomaly": the artifact still lands,
+    # because it exists and destroying it is not ours to decide, but a human
+    # releases it before anything reads it.
+    #
+    # `max` is a transport ceiling, not a governance rule. Landing buffers the
+    # whole body to hash it, so an unbounded upload is a memory exhaustion, and
+    # a request above this is refused before any of it is stored.
+    ingest_oversize_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        ge=1,
+        validation_alias="AEGIS_INGEST_OVERSIZE_BYTES",
+    )
+    ingest_max_bytes: int = Field(
+        default=100 * 1024 * 1024,
+        ge=1,
+        validation_alias="AEGIS_INGEST_MAX_BYTES",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

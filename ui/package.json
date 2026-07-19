@@ -24,6 +24,7 @@
   "devDependencies": {
     "@playwright/test": "^1.49.1",
     "@types/cytoscape": "^3.21.8",
+    "@types/node": "^26.1.1",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

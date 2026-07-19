@@ -5,6 +5,8 @@ import {
 } from "oidc-client-ts";
 import type { AuthProviderProps } from "react-oidc-context";
 
+import { notifyNavigated } from "../routing";
+
 /**
  * Keycloak OIDC with PKCE, via the maintained library rather than a hand-rolled
  * state machine (Article XII, ADR-032 §1).
@@ -80,6 +82,10 @@ export const oidcConfig: AuthProviderProps = {
     const state = user?.state as { returnTo?: string } | undefined;
     const target = state?.returnTo ?? "/";
     window.history.replaceState({}, document.title, target);
+    // `replaceState` fires no event, and the app mounted at `/auth/callback`
+    // before this ran — so without telling the router, every sign-in would land
+    // on the fallback view no matter which page was asked for.
+    notifyNavigated();
   },
 };
 

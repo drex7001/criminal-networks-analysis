@@ -15,6 +15,21 @@
   --canvas: #f5f7f9;
   --accent: #2f5169;
   --caution: #8a6d3b;
+  /*
+   * A governance hold is not an alarm, so quarantine gets the same bronze as
+   * every other "this needs you" mark, over a faint wash.  `--alert` is for a
+   * request that failed — a UI state — and is never applied to an entity, a
+   * category or a claim (spec 07 §5: no red-means-criminal styling).
+   */
+  --hold-wash: #fdfaf4;
+  --alert: #8c3a34;
+  /*
+   * Monospace is reserved for machine identities — content hashes, record ids
+   * — where character-by-character comparison is the point.  Anything a person
+   * wrote stays in the body face.
+   */
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "SF Mono", "Roboto Mono",
+    monospace;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 14px;
   color: var(--ink);
@@ -22,6 +37,20 @@
 
 * {
   box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 body {
@@ -184,4 +213,447 @@ button:hover {
   padding: 8px 0;
   border-top: 1px solid var(--line);
   font-size: 12px;
+}
+
+/* ── source landing (T23a) ───────────────────────────────────────────────── */
+
+.sources {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+}
+
+.sources > * {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 900px) {
+  .sources {
+    grid-template-columns: 1fr;
+  }
+
+  .sources > * {
+    overflow-y: visible;
+  }
+
+  .shell__main {
+    overflow-y: auto;
+  }
+}
+
+.sources__records {
+  padding: 20px;
+}
+
+.sources__records > * {
+  /* Rows hugging both edges of a wide monitor are unreadable; the register
+     stops widening once a filename and its meta sit comfortably. */
+  max-width: 980px;
+}
+
+.intake {
+  padding: 20px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+
+.more {
+  margin: 2px 0;
+}
+
+.more > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.more > summary:hover {
+  color: var(--ink);
+}
+
+.more[open] > summary {
+  margin-bottom: 10px;
+}
+
+.more .field + .field {
+  margin-top: 12px;
+}
+
+.intake__head h1 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.intake__head p {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 18px;
+  padding: 2px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.tab {
+  flex: 1;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  padding: 5px 8px;
+  color: var(--muted);
+}
+
+.tab:hover {
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.tab--active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(28 39 51 / 8%);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field__label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field__name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.field__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.field input[type="text"],
+.field input[type="url"],
+.field select,
+.field textarea {
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.field textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.inline-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.inline-create > select,
+.inline-create > input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.inline-create .field__label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.button {
+  padding: 7px 14px;
+  border-radius: 4px;
+}
+
+.button--primary {
+  align-self: flex-start;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/*
+ * The left rail means "this needs you" — the same device the graph view's
+ * notice already uses. Landed records keep the geometry and drop the colour,
+ * so rows stay aligned and only the exceptional ones read as marked.
+ */
+.outcome {
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 4px;
+}
+
+.outcome__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.outcome p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.outcome p + p {
+  margin-top: 4px;
+}
+
+.intake .outcome,
+.detail .outcome {
+  margin: 12px 0 0;
+}
+
+.outcome--landed {
+  border-left-color: var(--accent);
+}
+
+.outcome--already-landed {
+  border-left-color: var(--muted);
+}
+
+.outcome--quarantined {
+  border-left-color: var(--caution);
+  background: var(--hold-wash);
+}
+
+.outcome--error {
+  border-left-color: var(--alert);
+  color: var(--alert);
+}
+
+.digest {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.digest__label {
+  font-size: 9px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ledger {
+  padding: 20px;
+}
+
+.ledger__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.ledger__head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ledger__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ledger__filter select {
+  font: inherit;
+  color: inherit;
+  padding: 3px 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.empty {
+  margin: 0;
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 5px;
+}
+
+.records {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.record {
+  border-left: 3px solid transparent;
+}
+
+.record + .record {
+  border-top: 1px solid var(--line);
+}
+
+.record--held {
+  border-left-color: var(--caution);
+  background: var(--hold-wash);
+}
+
+.record__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 11px 14px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+
+.record__summary:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--canvas) 60%, transparent);
+}
+
+.record__name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.record__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.record__reason {
+  margin: 0;
+  padding: 0 14px 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--caution);
+}
+
+.chip {
+  padding: 1px 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.chip--held {
+  color: var(--caution);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--caution) 40%, var(--line));
+}
+
+.detail {
+  padding: 4px 14px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.detail__facts {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+  gap: 5px 16px;
+  margin: 12px 0 16px;
+  font-size: 12.5px;
+}
+
+.detail__facts dt {
+  color: var(--muted);
+}
+
+.detail__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.detail__action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.detail__action h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.detail__action p {
+  margin: 0;
+}
+
+.detail__line {
+  font-size: 12.5px;
+  line-height: 1.5;
 }
