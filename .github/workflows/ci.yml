@@ -56,6 +56,16 @@ jobs:
       - run: uv sync --locked --extra dev
       - name: Headless fictional MVP loop (T25)
         run: make test-mvp
+      - name: ER numeric quality gates (T26)
+        run: make test-er-evaluation
+      - name: Publish ER evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: er-evaluation
+          path: output/er-evaluation.json
+          if-no-files-found: error
+          retention-days: 30
       - run: make test-integration
 
   system-tests:

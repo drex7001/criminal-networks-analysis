@@ -32,6 +32,7 @@ Cross-cutting markers do not replace correct placement.
 ```bash
 make test-fast          # unit + component + contract
 make test-integration   # requires AEGIS_TEST_DATABASE_URL
+make test-er-evaluation # T26 numeric ER gates + machine-readable report
 make up && make bootstrap
 make test-system        # real PostgreSQL/OpenFGA behavior
 make test               # all currently automated blocking layers
